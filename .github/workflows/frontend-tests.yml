@@ -1,10 +1,6 @@
 name: frontend-tests
 
 on:
-  push:
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-tests.yml"
   pull_request:
     paths:
       - "frontend/**"

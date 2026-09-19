@@ -1,10 +1,6 @@
 name: frontend-checks
 
 on:
-  push:
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-checks.yml"
   pull_request:
     paths:
       - "frontend/**"

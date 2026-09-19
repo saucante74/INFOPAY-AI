@@ -1,10 +1,6 @@
 name: mypy
 
 on:
-  push:
-    paths:
-      - "backend/**"
-      - ".github/workflows/mypy.yml"
   pull_request:
     paths:
       - "backend/**"
