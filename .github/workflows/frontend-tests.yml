@@ -1,22 +1,14 @@
 name: frontend-tests
 
 on:
-  push:
-    paths:
-      - "frontend/**"
-      - ".github/workflows/frontend-tests.yml"
   pull_request:
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-tests.yml"
 
 concurrency:
-  # head_ref (PR events) and ref_name (push events) both resolve to the bare
-  # branch name, so a push and a pull_request for the same branch share one
-  # group. github.ref would not: it's "refs/heads/<branch>" on push, which
-  # never matches head_ref's "<branch>".
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
   frontend-tests:
