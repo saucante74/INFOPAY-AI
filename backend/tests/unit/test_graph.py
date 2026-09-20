@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from datetime import date
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sqlmodel import Session
 
 import app.agent.graph as graph_mod
@@ -40,6 +40,24 @@ class _FakeLLM:
 
     def invoke(self, messages):
         self.call_count += 1
+        return next(self._responses)
+
+
+class _CapturingLLM:
+    """Comme `_FakeLLM`, mais garde aussi une copie des `messages` reçus à
+    chaque appel — nécessaire pour inspecter le SystemMessage ou
+    l'historique effectivement envoyés au LLM, pas seulement la réponse
+    finale. `self.calls` est une liste de listes de messages, une par
+    appel à `.invoke()`, dans l'ordre."""
+
+    def __init__(self, responses: list[AIMessage]) -> None:
+        self._responses = iter(responses)
+        self.call_count = 0
+        self.calls: list[list] = []
+
+    def invoke(self, messages):
+        self.call_count += 1
+        self.calls.append(messages)
         return next(self._responses)
 
 
@@ -376,22 +394,6 @@ def test_agent_uses_the_real_available_period_end_to_end_for_a_vague_period_ques
         )
         session.commit()
 
-    captured_messages: list = []
-
-    class _CapturingLLM:
-        """Comme _FakeLLM, mais garde aussi une copie des messages reçus à
-        chaque appel — nécessaire ici pour inspecter le SystemMessage
-        effectivement envoyé au LLM, pas seulement la réponse finale."""
-
-        def __init__(self, responses: list[AIMessage]) -> None:
-            self._responses = iter(responses)
-            self.call_count = 0
-
-        def invoke(self, messages):
-            self.call_count += 1
-            captured_messages.append(messages)
-            return next(self._responses)
-
     fake_llm = _CapturingLLM(
         [
             AIMessage(
@@ -420,7 +422,7 @@ def test_agent_uses_the_real_available_period_end_to_end_for_a_vague_period_ques
     assert result["reply"] == "Le total des cotisations retraite est de 210.0 euros."
     # Le prompt système envoyé au LLM (1er message de chaque appel) porte
     # bien la vraie plage disponible (2026), pas une année inventée.
-    system_content = captured_messages[0][0].content
+    system_content = fake_llm.calls[0][0].content
     assert "02/2026" in system_content
     assert "03/2026" in system_content
 
@@ -466,6 +468,137 @@ def test_agent_gets_empty_extraits_trouves_when_vector_store_has_no_relevant_hit
     # pas de source à afficher, jamais une liste vide.
     assert result["sources"] is None
     assert fake_llm.call_count == 2
+
+
+def test_run_chat_sends_the_history_before_the_new_message_in_order(monkeypatch, test_engine):
+    # Une question de suivi ("et pour février ?") ne peut être comprise
+    # que si le LLM reçoit bien les échanges précédents, dans l'ordre,
+    # avant le nouveau message.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    fake_llm = _CapturingLLM(
+        [AIMessage(content="En février, le total est de 100.0 euros.")]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+    history = [
+        HumanMessage(content="Quel est le total de mes cotisations retraite en janvier ?"),
+        AIMessage(content="En janvier, le total est de 90.0 euros."),
+    ]
+
+    result = graph_mod.run_chat("Et pour février ?", history=history)
+
+    assert result["reply"] == "En février, le total est de 100.0 euros."
+    sent_messages = fake_llm.calls[0]
+    # [0] = le prompt système (reconstruit à chaque appel, voir
+    # _build_system_prompt), [1:] = historique + nouveau message, dans
+    # l'ordre exact où ils ont été fournis.
+    assert [m.content for m in sent_messages[1:]] == [
+        "Quel est le total de mes cotisations retraite en janvier ?",
+        "En janvier, le total est de 90.0 euros.",
+        "Et pour février ?",
+    ]
+
+
+def test_run_chat_truncates_history_to_the_last_n_messages(monkeypatch, test_engine):
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    fake_llm = _CapturingLLM([AIMessage(content="Réponse.")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+    # Deux fois plus de messages que la limite : seuls les N derniers
+    # doivent être envoyés au LLM, pas les plus anciens.
+    history = [
+        HumanMessage(content=f"message historique {i}")
+        for i in range(graph_mod.MAX_HISTORY_MESSAGES * 2)
+    ]
+
+    graph_mod.run_chat("Nouvelle question", history=history)
+
+    sent_messages = fake_llm.calls[0]
+    # [0] = system prompt, le reste = historique tronqué + nouveau message.
+    history_and_new_message = sent_messages[1:]
+    assert len(history_and_new_message) == graph_mod.MAX_HISTORY_MESSAGES + 1
+    # Les DERNIERS messages de l'historique sont gardés, pas les premiers.
+    expected_oldest_kept_index = len(history) - graph_mod.MAX_HISTORY_MESSAGES
+    assert history_and_new_message[0].content == f"message historique {expected_oldest_kept_index}"
+    assert history_and_new_message[-2].content == f"message historique {len(history) - 1}"
+    assert history_and_new_message[-1].content == "Nouvelle question"
+
+
+def test_run_chat_without_history_behaves_like_before(monkeypatch, test_engine):
+    # Rétrocompatibilité : `history` par défaut à None (voir la signature
+    # de run_chat), donc un appelant qui ne le fournit pas — comme avant
+    # cette tâche — continue de fonctionner exactement pareil.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    fake_llm = _CapturingLLM([AIMessage(content="Réponse sans historique.")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("Une question isolée")
+
+    assert result["reply"] == "Réponse sans historique."
+    sent_messages = fake_llm.calls[0]
+    assert [m.content for m in sent_messages[1:]] == ["Une question isolée"]
+
+
+def test_run_chat_does_not_leak_a_previous_turns_rag_sources_into_the_current_one(
+    monkeypatch, test_engine
+):
+    # `routers/chat.py`'s ChatHistoryMessage n'envoie jamais de ToolMessage
+    # brut (rôle/contenu texte seulement), donc ce scénario précis ne peut
+    # pas se produire via le routeur réel aujourd'hui — mais run_chat()
+    # accepte `history: list[AnyMessage]` au sens large, et son contrat ne
+    # doit pas dépendre de la discipline d'un appelant particulier. Ce test
+    # construit directement un historique contenant le ToolMessage d'un
+    # tour RAG précédent (comme le ferait un futur appelant, ou un
+    # checkpointer LangGraph persistant), pour verrouiller que
+    # run_chat() ne le confond jamais avec une source du tour actuel.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    history = [
+        HumanMessage(content="C'est quoi la CSG ?"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "search_payslip_knowledge_tool",
+                    "args": {"query": "C'est quoi la CSG ?"},
+                    "id": "call_previous",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        _search_tool_message(
+            {"text": "La CSG déductible est assise sur le salaire brut.", "mois_annee": "03/2025"},
+            tool_call_id="call_previous",
+        ),
+        AIMessage(content="D'après votre bulletin de mars 2025 : la CSG est déductible."),
+    ]
+
+    fake_llm = _FakeLLM([AIMessage(content="Le total du net à payer est de 2300.0 euros.")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("Et le total du net à payer ?", history=history)
+
+    # Cette question n'appelle pas le tool RAG (une seule réponse directe
+    # dans fake_llm) : aucune source à citer pour CE tour, même si
+    # l'historique rejoué en contient une d'un tour précédent.
+    assert result["sources"] is None
+
+
+def test_extract_sources_ignores_messages_from_before_the_cutoff_index():
+    # Teste _extract_sources directement avec le même scénario, au niveau
+    # le plus bas : une liste où seul le message APRÈS l'index de coupure
+    # doit compter. run_chat() calcule ce sous-ensemble via
+    # result["messages"][len(messages):] ; ici on le construit à la main
+    # pour isoler la logique de filtrage de celle du graphe.
+    previous_turn_tool_message = _search_tool_message(
+        {"text": "extrait d'un tour précédent", "mois_annee": "01/2025"}
+    )
+    current_turn_messages = [AIMessage(content="Réponse du tour actuel, sans tool call.")]
+
+    # Liste complète (comme result["messages"]) : contient l'ancien ToolMessage.
+    assert graph_mod._extract_sources([previous_turn_tool_message, *current_turn_messages]) == [
+        {"mois_annee": "01/2025", "extrait": "extrait d'un tour précédent"}
+    ]
+    # Sous-ensemble "ce tour seulement" (ce que run_chat() passe réellement) :
+    # aucune source, cohérent avec l'absence de tool call ce tour-ci.
+    assert graph_mod._extract_sources(current_turn_messages) is None
 
 
 def _search_tool_message(*hits: dict, tool_call_id: str = "call_1") -> ToolMessage:

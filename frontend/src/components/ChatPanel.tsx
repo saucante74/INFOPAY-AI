@@ -62,6 +62,15 @@ export default function ChatPanel() {
   }, [isLoading]);
 
   const performSend = async (content: string): Promise<void> => {
+    // Captured before appending the new user bubble below: the backend is
+    // stateless, so this — not that upcoming bubble — is "everything
+    // already exchanged before this message". `sources` is dropped: the
+    // backend only needs role/content to follow the conversation, not a
+    // past turn's RAG citations (see ChatHistoryMessage, routers/chat.py).
+    const history = messages.map(({ role, content: pastContent }) => ({
+      role,
+      content: pastContent,
+    }));
     setMessages((prev) => [...prev, { role: "user", content }]);
     setInput("");
     setIsLoading(true);
@@ -71,7 +80,7 @@ export default function ChatPanel() {
     setIsTakingLonger(false);
 
     try {
-      const { reply, sources } = await sendChatMessage(content);
+      const { reply, sources } = await sendChatMessage(content, history);
       setMessages((prev) => [...prev, { role: "assistant", content: reply, sources }]);
       // See UploadZone.tsx's identical call for why this is a safe local
       // update rather than a second network round trip.

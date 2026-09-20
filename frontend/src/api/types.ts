@@ -23,6 +23,9 @@ export type ChatResponse = components["schemas"]["ChatResponse"];
 /** One RAG source cited in a `ChatResponse` — a month and the matching extract. */
 export type ChatSource = components["schemas"]["ChatSource"];
 
+/** One already-exchanged message, sent back as conversation history. */
+export type ChatHistoryMessage = components["schemas"]["ChatHistoryMessage"];
+
 /** Body of `POST /api/auth/login`. */
 export type LoginRequest = components["schemas"]["LoginRequest"];
 

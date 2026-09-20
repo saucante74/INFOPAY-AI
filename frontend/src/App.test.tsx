@@ -119,7 +119,7 @@ describe("App — login modal triggered by a protected action", () => {
 
     await logInThroughModal();
 
-    expect(mockSendChatMessage).toHaveBeenCalledWith("Une question");
+    expect(mockSendChatMessage).toHaveBeenCalledWith("Une question", []);
     expect(await screen.findByText("Réponse de l'assistant.")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

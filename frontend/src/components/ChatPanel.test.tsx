@@ -74,7 +74,7 @@ describe("ChatPanel", () => {
     const suggestion = "Quelle est la moyenne de mon net à payer ?";
     await userEvent.click(screen.getByText(suggestion));
 
-    expect(mockSendChatMessage).toHaveBeenCalledWith(suggestion);
+    expect(mockSendChatMessage).toHaveBeenCalledWith(suggestion, []);
     expect(screen.queryByText("Suggestions")).not.toBeInTheDocument();
     // The suggestion text now lives in the user's own message bubble.
     expect(screen.getByText(suggestion)).toBeInTheDocument();
@@ -277,7 +277,7 @@ describe("ChatPanel", () => {
       resumeSend?.();
     });
 
-    expect(mockSendChatMessage).toHaveBeenCalledWith("Une question");
+    expect(mockSendChatMessage).toHaveBeenCalledWith("Une question", []);
     expect(screen.getByText("Une question")).toBeInTheDocument();
     expect(await screen.findByText("Réponse de l'assistant.")).toBeInTheDocument();
   });
@@ -365,5 +365,95 @@ describe("ChatPanel — RAG sources", () => {
 
     // Exactly one Sources section, not one per message.
     expect(screen.getAllByText("Sources (1)")).toHaveLength(1);
+  });
+});
+
+describe("ChatPanel — conversation history", () => {
+  it("sends the accumulated messages as history on a follow-up question", async () => {
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "En janvier, le total est de 90.0 euros.",
+      sources: null,
+    });
+    render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "Quel est le total en janvier ?{enter}");
+    await screen.findByText("En janvier, le total est de 90.0 euros.");
+
+    // First message of the conversation: no history yet.
+    expect(mockSendChatMessage).toHaveBeenNthCalledWith(1, "Quel est le total en janvier ?", []);
+
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "En février, le total est de 100.0 euros.",
+      sources: null,
+    });
+    await user.type(input, "Et pour février ?{enter}");
+    await screen.findByText("En février, le total est de 100.0 euros.");
+
+    // Follow-up: the whole exchange so far, oldest first, not including
+    // the new message itself (sent separately as the first argument).
+    expect(mockSendChatMessage).toHaveBeenNthCalledWith(2, "Et pour février ?", [
+      { role: "user", content: "Quel est le total en janvier ?" },
+      { role: "assistant", content: "En janvier, le total est de 90.0 euros." },
+    ]);
+  });
+
+  it("does not include a past message's sources in the history payload", async () => {
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "D'après votre bulletin de mars 2025 : la CSG est déductible.",
+      sources: [{ mois_annee: "03/2025", extrait: "La CSG déductible est assise sur..." }],
+    });
+    render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "C'est quoi la CSG ?{enter}");
+    await screen.findByText("D'après votre bulletin de mars 2025 : la CSG est déductible.");
+
+    mockSendChatMessage.mockResolvedValueOnce({ reply: "Autre chose ?", sources: null });
+    await user.type(input, "Merci{enter}");
+    await screen.findByText("Autre chose ?");
+
+    // Only role/content is sent back, never the sources from that earlier
+    // assistant message.
+    expect(mockSendChatMessage).toHaveBeenNthCalledWith(2, "Merci", [
+      { role: "user", content: "C'est quoi la CSG ?" },
+      {
+        role: "assistant",
+        content: "D'après votre bulletin de mars 2025 : la CSG est déductible.",
+      },
+    ]);
+  });
+
+  it("resets the conversation on a fresh mount, simulating a page reload", async () => {
+    // ChatPanel's history lives only in React state (`useState`), never in
+    // browser storage or a server session — unmounting and remounting the
+    // component (what a full page reload does) is enough to confirm it
+    // starts empty again, without needing to reload jsdom's window itself.
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "En janvier, le total est de 90.0 euros.",
+      sources: null,
+    });
+    const { unmount } = render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "Quel est le total en janvier ?{enter}");
+    await screen.findByText("En janvier, le total est de 90.0 euros.");
+
+    unmount();
+    mockSendChatMessage.mockResolvedValueOnce({ reply: "Bonjour !", sources: null });
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Suggestions")).toBeInTheDocument();
+    expect(screen.queryByText("Quel est le total en janvier ?")).not.toBeInTheDocument();
+
+    const freshInput = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(freshInput, "bonjour{enter}");
+    await screen.findByText("Bonjour !");
+
+    // No leftover history from the unmounted instance.
+    expect(mockSendChatMessage).toHaveBeenNthCalledWith(2, "bonjour", []);
   });
 });

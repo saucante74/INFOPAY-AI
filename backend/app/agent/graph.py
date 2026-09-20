@@ -65,6 +65,20 @@ class ChatResult(TypedDict):
 
 CHAT_MODEL = "claude-sonnet-4-6"
 
+# Troncature simple par nombre de messages, pas par budget de tokens : ce
+# projet reste un prototype avec des conversations courtes (quelques
+# échanges par session de chat), donc borner le coût/la latence n'exige
+# pas la complexité d'un vrai compteur de tokens (tokenizer, taille
+# variable des tool_calls et de leurs résultats, etc.) — hors de
+# proportion avec l'usage réel. 20 messages = 10 échanges user/assistant :
+# largement assez pour qu'un suivi ("et pour février ?") reste compris,
+# tout en bornant la taille envoyée à l'API Anthropic à chaque appel si
+# une conversation s'éternise. Les N derniers plutôt que les N premiers :
+# le contexte le plus récent est presque toujours le plus pertinent pour
+# une question de suivi. À revoir si des conversations nettement plus
+# longues deviennent courantes en usage réel.
+MAX_HISTORY_MESSAGES = 20
+
 
 def _today() -> date:
     """Enveloppe `date.today()` dans une fonction du module, pour pouvoir
@@ -206,10 +220,19 @@ def run_chat(user_message: str, history: list[AnyMessage] | None = None) -> Chat
     """Point d'entrée appelé par le routeur FastAPI /api/chat."""
     from langchain_core.messages import HumanMessage
 
-    messages = (history or []) + [HumanMessage(content=user_message)]
+    truncated_history = (history or [])[-MAX_HISTORY_MESSAGES:]
+    messages = truncated_history + [HumanMessage(content=user_message)]
     result = agent_graph.invoke({"messages": messages})
     final_message = result["messages"][-1]
     # BaseMessage.content est `str | list[...]` ; nos réponses finales, sans
     # tool_call, sont toujours du texte.
     reply = cast(str, final_message.content)
-    return {"reply": reply, "sources": _extract_sources(result["messages"])}
+    # _extract_sources ne doit regarder que les messages produits PENDANT
+    # ce tour (à partir de l'index len(messages), donc après le dernier
+    # HumanMessage envoyé) — pas tout `result["messages"]`, qui contient
+    # aussi l'historique rejoué. Sans cette coupure, une réponse RAG
+    # produite lors d'un tour précédent réapparaîtrait comme "source" du
+    # tour actuel à chaque appel suivant, tant qu'elle reste dans la
+    # fenêtre de troncature.
+    new_messages = result["messages"][len(messages) :]
+    return {"reply": reply, "sources": _extract_sources(new_messages)}
