@@ -8,6 +8,7 @@ import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
+import { Analytics } from "@vercel/analytics/react";
 
 /**
  * Declarative `<Routes>`/`<Route>` JSX, not `createBrowserRouter`'s config
@@ -35,6 +36,7 @@ export default function App() {
         </Route>
       </Routes>
       <SpeedInsights />
+      <Analytics />
     </BrowserRouter>
   );
 }
