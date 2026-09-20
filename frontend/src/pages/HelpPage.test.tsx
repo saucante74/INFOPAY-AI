@@ -107,6 +107,6 @@ describe("HelpPage — BatiRenov known-limitation entry", () => {
   it("shows a short caption explaining the extraction limitation", () => {
     render(<HelpPage />);
 
-    expect(screen.getByText(/illustre une limite actuelle de l'extraction/)).toBeInTheDocument();
+    expect(screen.getByText(/Ce format est non valide et utilisé à titre d'exemple/)).toBeInTheDocument();
   });
 });
