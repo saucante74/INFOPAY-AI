@@ -6,6 +6,17 @@ import { requireAuth } from "../auth/authModal";
 import { decrementRateLimit } from "../hooks/useRateLimits";
 
 /**
+ * Delay after which the loading indicator switches to a "still working"
+ * message. Purely time-based, not tool-based: `/api/chat` is a single
+ * classic HTTP request/response (no SSE), so the frontend has no way to
+ * know which tool the agent is calling mid-flight — see RAPPORT.md for why
+ * a differentiated per-tool indicator isn't feasible without a streaming
+ * backend. This is deliberately honest about that: it reflects elapsed
+ * time only, never claims to know what the backend is doing.
+ */
+const SLOW_REPLY_DELAY_MS = 4000;
+
+/**
  * `as const satisfies readonly string[]`: `satisfies` checks the contract
  * without widening, so the array keeps its literal element types (useful if a
  * suggestion is ever referenced by value) while still being rejected if a
@@ -28,16 +39,31 @@ export default function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isTakingLonger, setIsTakingLonger] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading]);
 
+  useEffect(() => {
+    if (!isLoading) return;
+    const timer = setTimeout(() => {
+      setIsTakingLonger(true);
+    }, SLOW_REPLY_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isLoading]);
+
   const performSend = async (content: string): Promise<void> => {
     setMessages((prev) => [...prev, { role: "user", content }]);
     setInput("");
     setIsLoading(true);
+    // Reset for this send — `isLoading` turning true re-arms the effect
+    // above, but doesn't itself clear a "taking longer" flag left over
+    // from a previous slow reply.
+    setIsTakingLonger(false);
 
     try {
       const reply = await sendChatMessage(content);
@@ -121,7 +147,9 @@ export default function ChatPanel() {
           <div className="flex justify-start">
             <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-soft">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Analyse en cours…
+              {isTakingLonger
+                ? "Cela prend un peu plus de temps que d'habitude…"
+                : "Analyse en cours…"}
             </div>
           </div>
         )}

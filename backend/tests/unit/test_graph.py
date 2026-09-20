@@ -22,6 +22,7 @@ from langchain_core.messages import AIMessage
 from sqlmodel import Session
 
 import app.agent.graph as graph_mod
+import app.agent.tools as tools_mod
 import app.services.analytics as analytics_mod
 from app.models.payslip import Payslip
 
@@ -240,3 +241,57 @@ def test_agent_compares_two_periods_with_two_successive_tool_calls(monkeypatch, 
     # chacune avec sa propre plage, pas un seul appel avec un paramètre de
     # comparaison.
     assert fake_llm.call_count == 3
+
+
+def test_system_prompt_instructs_honesty_when_nothing_is_found():
+    # Le tool signale "rien trouvé" en renvoyant extraits_trouves vide
+    # (voir _build_hits dans vectorstore.py) ; c'est au system prompt de
+    # dire au LLM comment réagir à ce signal, puisque le tool lui-même ne
+    # peut pas formuler la réponse finale à la place du LLM.
+    content = graph_mod.SYSTEM_PROMPT.content
+    assert "extraits_trouves" in content
+    assert "vide" in content
+    assert "aucune information" in content.lower()
+
+
+def test_system_prompt_instructs_citing_the_source():
+    content = graph_mod.SYSTEM_PROMPT.content
+    assert "mois_annee" in content
+    assert "source" in content.lower()
+
+
+def test_agent_gets_empty_extraits_trouves_when_vector_store_has_no_relevant_hit(
+    monkeypatch, fake_vector_store
+):
+    # fake_vector_store.hits vide simule ce que ChromaVectorStore.search()
+    # renvoie réellement quand aucun résultat n'a été trouvé, ou quand tous
+    # les résultats sont sous le seuil de similarité (_build_hits) — les
+    # deux cas produisent la même liste vide, donc un seul scénario suffit
+    # à ce niveau.
+    fake_vector_store.hits = []
+    monkeypatch.setattr(tools_mod, "get_vector_store", lambda: fake_vector_store)
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_payslip_knowledge_tool",
+                        "args": {"query": "qu'est-ce que la prime de partage de la valeur ?"},
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content="Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés."
+            ),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    reply = graph_mod.run_chat("qu'est-ce que la prime de partage de la valeur ?")
+
+    assert reply == "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés."
+    assert fake_llm.call_count == 2

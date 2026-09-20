@@ -113,9 +113,7 @@ export default function HelpPage() {
         </div>
 
         <div className="mt-4">
-          <h3 className="text-sm font-medium text-alert">
-            Exemples de PDF non acceptés
-          </h3>
+          <h3 className="text-sm font-medium text-alert">Exemples de PDF non acceptés</h3>
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <ExampleLink {...KNOWN_LIMITATION_EXAMPLE} variant="limitation" />

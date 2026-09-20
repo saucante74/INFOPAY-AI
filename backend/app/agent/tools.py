@@ -78,6 +78,14 @@ def search_payslip_knowledge_tool(query: str) -> SearchKnowledgeResult:
     N'utilise PAS cet outil pour des calculs chiffrés : utilise
     query_analytics dans ce cas.
 
+    extraits_trouves peut être vide : cela veut dire qu'aucune information
+    pertinente n'a été trouvée (aucun résultat, ou seulement des résultats
+    trop éloignés de la question) — ne l'interprète JAMAIS comme "aucun
+    résultat renvoyé donc improvise une réponse", vois la consigne du
+    prompt système sur ce cas précis. Chaque extrait renvoyé porte sa
+    source (mois_annee du bulletin d'où il vient) : cite-la dans ta
+    réponse.
+
     Args:
         query: la question ou le terme à rechercher.
     """

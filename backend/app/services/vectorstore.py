@@ -22,6 +22,40 @@ from chromadb.utils import embedding_functions
 CHROMA_PATH = "./data/chroma_data"
 COLLECTION_NAME = "payslips"
 
+# `Collection.query()` renvoie par défaut une distance L2 au carré sur des
+# embeddings normalisés (all-MiniLM-L6-v2, la fonction par défaut de
+# Chroma) : 0.0 = chunk identique à la requête, jusqu'à 4.0 = opposé.
+# Vérifié empiriquement (voir RAPPORT.md) : un texte identique donne 0.0,
+# une requête sans aucun rapport lexical donne ~1.8. Ce seuil est
+# volontairement conservateur — il n'écarte que les cas franchement
+# dégénérés. Les tests empiriques montrent que l'embedding par défaut (un
+# modèle anglophone généraliste, sur du français, sur des chunks courts) ne
+# sépare PAS de façon fiable une question française hors-sujet d'une
+# question française pertinente dans la zone 1.0-1.3 : un seuil plus
+# agressif y rejetterait autant de bonnes réponses que de mauvaises. Voir
+# RAPPORT.md pour la méthodologie et ses limites.
+SIMILARITY_DISTANCE_THRESHOLD = 1.5
+
+
+def _build_hits(
+    documents: list[str],
+    metadatas: list[Mapping[str, Any]],
+    distances: list[float],
+    threshold: float = SIMILARITY_DISTANCE_THRESHOLD,
+) -> list[dict[str, Any]]:
+    """Assemble les hits (texte + source `mois_annee`) à partir des trois
+    listes parallèles renvoyées par `Collection.query()`, en excluant les
+    chunks dont la distance dépasse `threshold` — trop éloignés de la
+    requête pour être présentés comme une réponse pertinente. Fonction pure
+    (pas d'E/S), donc testable sans ouvrir de collection ChromaDB réelle,
+    contrairement à `ChromaVectorStore.search()` qui l'appelle."""
+    hits = []
+    for doc, meta, distance in zip(documents, metadatas, distances):
+        if distance > threshold:
+            continue
+        hits.append({"text": doc, "mois_annee": meta.get("mois_annee")})
+    return hits
+
 
 def _chunk_text(text: str, chunk_size: int = 800, overlap: int = 100) -> list[str]:
     """Découpage simple par fenêtre glissante. Les bulletins sont courts
@@ -66,14 +100,12 @@ class ChromaVectorStore:
     def search(self, query: str, n_results: int = 3) -> list[dict[str, Any]]:
         results = self._collection.query(query_texts=[query], n_results=n_results)
 
-        hits = []
         # QueryResult est un TypedDict total=False : les clés existent mais
         # peuvent valoir None. `or` couvre les deux cas (absente ou None).
         documents = (results.get("documents") or [[]])[0]
         metadatas = (results.get("metadatas") or [[]])[0]
-        for doc, meta in zip(documents, metadatas):
-            hits.append({"text": doc, "mois_annee": meta.get("mois_annee")})
-        return hits
+        distances = (results.get("distances") or [[]])[0]
+        return _build_hits(documents, metadatas, distances)
 
     def delete(self, payslip_id: int) -> None:
         self._collection.delete(where={"payslip_id": payslip_id})

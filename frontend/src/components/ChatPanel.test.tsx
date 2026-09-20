@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -107,6 +107,58 @@ describe("ChatPanel", () => {
       expect(screen.queryByText("Analyse en cours…")).not.toBeInTheDocument();
     });
     expect(screen.getByText("Bonjour ! Comment puis-je vous aider ?")).toBeInTheDocument();
+  });
+
+  it("switches to a 'taking longer' message after the slow-reply delay, without claiming to know which tool is running", async () => {
+    // `userEvent.type` relies on its own internal timers, which is a poor
+    // fit for a test that also fakes timers to control a `setTimeout`
+    // inside the component — `fireEvent` sidesteps that entirely (same
+    // reasoning CONVENTIONS.md gives for using `fireEvent.drop` over
+    // `userEvent` for drag-and-drop).
+    vi.useFakeTimers();
+    const { promise, resolve } = deferred<string>();
+    mockSendChatMessage.mockReturnValueOnce(promise);
+    const { container } = render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    fireEvent.change(input, { target: { value: "Bonjour" } });
+    const form = container.querySelector("form");
+    if (!form) throw new Error("form not found");
+    fireEvent.submit(form);
+
+    expect(screen.getByText("Analyse en cours…")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+    expect(screen.getByText("Cela prend un peu plus de temps que d'habitude…")).toBeInTheDocument();
+    expect(screen.queryByText("Analyse en cours…")).not.toBeInTheDocument();
+
+    resolve("Bonjour ! Comment puis-je vous aider ?");
+    await act(async () => {
+      await promise;
+    });
+    expect(
+      screen.queryByText("Cela prend un peu plus de temps que d'habitude…")
+    ).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
+  it("does not show the 'taking longer' message for a reply that resolves quickly", async () => {
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce("Réponse rapide.");
+    render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "Bonjour{enter}");
+
+    await waitFor(() => {
+      expect(screen.getByText("Réponse rapide.")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Cela prend un peu plus de temps que d'habitude…")
+    ).not.toBeInTheDocument();
   });
 
   it("shows a fallback error message when the request fails", async () => {
