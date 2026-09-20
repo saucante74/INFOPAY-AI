@@ -44,3 +44,69 @@ describe("HelpPage — sample payslip downloads", () => {
     }
   );
 });
+
+describe("HelpPage — BatiRenov known-limitation entry", () => {
+  it("has no separate 'limite-connue' section anymore", () => {
+    render(<HelpPage />);
+
+    expect(document.getElementById("limite-connue")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Limite actuelle de l'extraction" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("is in its own 'Exemples de PDF non acceptés' group, not in 'Exemples de formats variés'", () => {
+    render(<HelpPage />);
+
+    const variedHeading = screen.getByRole("heading", { name: "Exemples de formats variés" });
+    const rejectedHeading = screen.getByRole("heading", {
+      name: "Exemples de PDF non acceptés",
+    });
+    const link = document.querySelector('a[href="/exemples/bulletin_batirenov_06_2022.pdf"]');
+    expect(link).toBeInTheDocument();
+    expect(variedHeading.parentElement?.contains(link ?? null)).toBe(false);
+    expect(rejectedHeading.parentElement?.contains(link ?? null)).toBe(true);
+  });
+
+  it("leaves only PharmaOuest, Clinique and AeroSpace in 'Exemples de formats variés'", () => {
+    render(<HelpPage />);
+
+    const variedHeading = screen.getByRole("heading", { name: "Exemples de formats variés" });
+    const links = variedHeading.parentElement?.querySelectorAll("a") ?? [];
+    expect(links).toHaveLength(3);
+    expect(Array.from(links).map((link) => link.getAttribute("href"))).toEqual([
+      "/exemples/bulletin_pharmaouest_03_2023.pdf",
+      "/exemples/bulletin_clinique_11_2024.pdf",
+      "/exemples/bulletin_aerospace_08_2025.pdf",
+    ]);
+  });
+
+  it("only lists the BatiRenov example once", () => {
+    render(<HelpPage />);
+
+    const links = document.querySelectorAll('a[href="/exemples/bulletin_batirenov_06_2022.pdf"]');
+    expect(links).toHaveLength(1);
+  });
+
+  it("carries an always-visible AlertTriangle icon", () => {
+    render(<HelpPage />);
+
+    const link = document.querySelector('a[href="/exemples/bulletin_batirenov_06_2022.pdf"]');
+    expect(link?.querySelector("svg.lucide-alert-triangle")).toBeInTheDocument();
+  });
+
+  it("styles the link with the alert hover color, not accent", () => {
+    render(<HelpPage />);
+
+    const link = document.querySelector('a[href="/exemples/bulletin_batirenov_06_2022.pdf"]');
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveClass("hover:border-alert", "hover:text-alert");
+    expect(link).not.toHaveClass("hover:border-accent", "hover:text-accent");
+  });
+
+  it("shows a short caption explaining the extraction limitation", () => {
+    render(<HelpPage />);
+
+    expect(screen.getByText(/illustre une limite actuelle de l'extraction/)).toBeInTheDocument();
+  });
+});

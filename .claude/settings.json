@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Write",
+      "Bash(npm run *)",
+      "Bash(npm install*)",
+      "Bash(pytest*)",
+      "Bash(mypy*)",
+      "Bash(python3*)",
+      "Bash(python -c*)",
+      "Bash(pip install*)",
+      "Bash(grep*)",
+      "Bash(find*)",
+      "Bash(xargs*)",
+      "Bash(ls*)",
+      "Bash(cat*)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git check-ignore*)",
+      "Bash(docker*)"
+    ],
+    "deny": [
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git checkout*)",
+      "Bash(git switch*)",
+      "Bash(git branch*)",
+      "Bash(git stash*)",
+      "Bash(git reset*)",
+      "Bash(git restore*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)"
+    ]
+  }
+}

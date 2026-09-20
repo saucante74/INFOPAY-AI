@@ -1,6 +1,8 @@
+import logging
 from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from pydantic import ValidationError
 from sqlmodel import Session
 
 from app.db import get_session
@@ -8,9 +10,21 @@ from app.dependencies import get_extractor, get_vector_store
 from app.interfaces import Extractor, VectorStore
 from app.models.payslip import Payslip
 from app.rate_limit import upload_rate_limit
-from app.services.extraction import extract_text_from_pdf
+from app.services.extraction import PayslipExtractionError, extract_text_from_pdf
 
 router = APIRouter(prefix="/api", tags=["upload"])
+logger = logging.getLogger(__name__)
+
+# Message générique volontairement : le détail Pydantic brut (noms de champs
+# internes, type attendu, lien vers errors.pydantic.dev...) n'a aucun sens
+# pour l'utilisateur final et ne doit jamais atteindre le frontend — voir
+# PayslipExtractionError et le `except` ci-dessous, qui logue le détail
+# technique côté serveur avant de renvoyer ce texte.
+EXTRACTION_ERROR_MESSAGE = (
+    "Certaines informations n'ont pas pu être lues correctement sur ce bulletin "
+    "(mise en page inhabituelle ou texte peu lisible). Essayez avec un bulletin "
+    "au format plus standard, ou consultez les exemples fournis dans la page Aide."
+)
 
 
 @router.post("/upload", dependencies=[Depends(upload_rate_limit)])
@@ -28,8 +42,9 @@ async def upload_payslip(
     raw_text = extract_text_from_pdf(file_bytes)
     try:
         extracted = extractor.extract(raw_text)
-    except Exception as exc:  # extraction LLM ou parsing PDF échoués
-        raise HTTPException(status_code=422, detail=f"Extraction impossible: {exc}") from exc
+    except (PayslipExtractionError, ValidationError) as exc:
+        logger.warning("Échec d'extraction pour %r : %s", file.filename, exc)
+        raise HTTPException(status_code=422, detail=EXTRACTION_ERROR_MESSAGE) from exc
 
     payslip = Payslip(
         **extracted.model_dump(),
