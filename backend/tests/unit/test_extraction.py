@@ -11,7 +11,12 @@ import pytest
 
 import app.services.extraction as extraction_mod
 from app.models.payslip import PayslipExtraction
-from app.services.extraction import ClaudeExtractor, extract_text_from_pdf, get_default_extractor
+from app.services.extraction import (
+    ClaudeExtractor,
+    PayslipExtractionError,
+    extract_text_from_pdf,
+    get_default_extractor,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -69,7 +74,7 @@ def test_extract_raises_on_empty_text_without_calling_the_llm(mocker, sample_pay
     mock_cls, _ = _mock_chat_anthropic(mocker, sample_payslip_extraction)
 
     extractor = ClaudeExtractor()
-    with pytest.raises(ValueError, match="Impossible d'extraire"):
+    with pytest.raises(PayslipExtractionError, match="Impossible d'extraire"):
         extractor.extract("")
 
     mock_cls.assert_not_called()

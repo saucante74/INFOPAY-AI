@@ -187,6 +187,43 @@ scalar values).
 
 ---
 
+## Agent tool parameters: a generic range, not one parameter per use case
+
+`query_analytics` (`app/services/analytics.py` + `app/agent/tools.py`)
+originally only took `derniers_n_mois` ("the last N months"). A real
+question — "somme des prélèvements à la source en 2026" — exposed the gap:
+the LLM had no way to express "a specific year" or "an arbitrary period",
+and silently summed across every year instead.
+
+**The fix generalizes instead of special-casing.** Rather than adding
+`annee: int | None` for "a specific year", then later `trimestre: int |
+None` for "a quarter", then a comparison parameter for "compare 2025 and
+2026", the tool got exactly two new parameters: `date_debut: str | None`
+and `date_fin: str | None`, both `"MM/YYYY"` (the same format `mois_annee`
+already uses everywhere in this codebase — no new format to teach the
+LLM). Every period a user might name — a year, a quarter, "since March",
+an explicit range — reduces to a start/end pair the LLM computes itself
+from the question's wording and its own sense of the current date; no new
+tool parameter is needed for the next phrasing that comes up. A comparison
+between two periods ("compare 2025 and 2026") is deliberately **not** a
+third parameter either: the tool's docstring tells the LLM to call
+`query_analytics` once per period and write the comparison itself from the
+two exact results — comparison is reasoning over already-exact numbers, not
+a new kind of calculation that needs its own Pandas path.
+
+**Apply this going forward**: when a new question shape exposes a gap in
+what a tool can express, prefer widening an existing generic parameter (a
+range, a set, a predicate) over bolting on a parameter named after that one
+use case. A parameter per use case is closed for extension in exactly the
+way `analytics.py`'s `Operation` dispatch is deliberately open for it (see
+"Open/Closed" above) — it works today and starts multiplying special cases
+tomorrow. The trade-off is a slightly heavier tool description (the LLM
+has to be told *how* to compute the generic parameter, e.g. the `date_debut`
+examples in `tools.py`'s docstring) in exchange for a tool surface that
+doesn't grow with every new phrasing.
+
+---
+
 ## TypeScript (frontend)
 
 The migration is **done** — `frontend/` is TypeScript end to end, on the

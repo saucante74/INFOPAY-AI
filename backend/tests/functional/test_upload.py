@@ -8,6 +8,12 @@ conftest.py (`fake_extractor`, `fake_vector_store`) via
 """
 from __future__ import annotations
 
+from pydantic import ValidationError
+
+from app.models.payslip import PayslipExtraction
+from app.routers.upload import EXTRACTION_ERROR_MESSAGE
+from app.services.extraction import PayslipExtractionError
+
 
 def test_upload_happy_path_persists_and_indexes(client, fake_extractor, fake_vector_store, sample_pdf_bytes):
     response = client.post(
@@ -37,16 +43,66 @@ def test_upload_rejects_non_pdf_content_type(client, fake_vector_store):
     assert fake_vector_store.indexed == []  # jamais atteint
 
 
-def test_upload_returns_422_when_extraction_fails(client, fake_extractor, fake_vector_store, sample_pdf_bytes):
-    fake_extractor.exception = ValueError("Impossible d'extraire du texte de ce PDF (scan image ?).")
+def test_upload_returns_422_with_readable_message_on_payslip_extraction_error(
+    client, fake_extractor, fake_vector_store, sample_pdf_bytes
+):
+    """Cas `PayslipExtractionError` (ex : texte introuvable dans le PDF)."""
+    fake_extractor.exception = PayslipExtractionError(
+        "Impossible d'extraire du texte de ce PDF (scan image ?)."
+    )
 
     response = client.post(
         "/api/upload", files={"file": ("bulletin.pdf", sample_pdf_bytes, "application/pdf")}
     )
 
     assert response.status_code == 422
-    assert "Extraction impossible" in response.json()["detail"]
-    assert "scan image" in response.json()["detail"]
+    detail = response.json()["detail"]
+    # Le message affiché à l'utilisateur est le texte lisible, jamais le
+    # détail technique brut de l'exception.
+    assert detail == EXTRACTION_ERROR_MESSAGE
+    assert "scan image" not in detail
+    # Rien n'a été indexé puisque la ligne n'a jamais été committée.
+    assert fake_vector_store.indexed == []
+
+
+def test_upload_returns_422_with_readable_message_on_pydantic_validation_error(
+    client, fake_extractor, fake_vector_store, sample_pdf_bytes
+):
+    """Cas réel qui a motivé ce fix : le LLM renvoie une sortie structurée
+    dont un champ ne respecte pas le schéma `PayslipExtraction` (ex : une
+    chaîne là où un nombre est attendu, sur un bulletin à la mise en page
+    atypique). Ça lève `pydantic.ValidationError`, dont le message technique
+    brut ("Input should be a valid number, unable to parse string as a
+    number [...] https://errors.pydantic.dev/...") ne doit jamais atteindre
+    le frontend tel quel."""
+    try:
+        PayslipExtraction(
+            mois_annee="06/2022",
+            nom_entreprise="BatiRenov",
+            salaire_brut=3000.0,
+            net_imposable=2400.0,
+            net_a_payer=2300.0,
+            total_cotisations_salariales=600.0,
+            total_cotisations_patronales="non numérique",  # type: ignore[arg-type]
+            cotisations_retraite=350.0,
+            prelevement_source=120.0,
+        )
+    except ValidationError as exc:
+        fake_extractor.exception = exc
+    else:  # pragma: no cover - garde-fou si le schéma change un jour
+        raise AssertionError("PayslipExtraction aurait dû lever ValidationError ici")
+
+    response = client.post(
+        "/api/upload", files={"file": ("bulletin.pdf", sample_pdf_bytes, "application/pdf")}
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail == EXTRACTION_ERROR_MESSAGE
+    # Le détail Pydantic brut (nom de champ interne, lien errors.pydantic.dev...)
+    # ne doit plus jamais fuiter jusqu'à la réponse HTTP.
+    assert "total_cotisations_patronales" not in detail
+    assert "pydantic.dev" not in detail
     # Rien n'a été indexé puisque la ligne n'a jamais été committée.
     assert fake_vector_store.indexed == []
 

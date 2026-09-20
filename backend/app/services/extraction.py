@@ -27,6 +27,19 @@ from app.models.payslip import PayslipExtraction
 
 EXTRACTION_MODEL = "claude-sonnet-4-6"
 
+
+class PayslipExtractionError(Exception):
+    """Échec d'extraction imputable au document (texte introuvable, mise en
+    page trop atypique pour que le LLM renseigne tous les champs...), par
+    opposition à une erreur d'infrastructure (API Anthropic injoignable,
+    etc.) qui doit continuer à se propager telle quelle.
+
+    Type dédié plutôt qu'un `ValueError` générique : `upload.py` peut la
+    catcher spécifiquement (avec `pydantic.ValidationError`, levée quand la
+    sortie structurée du LLM ne respecte pas le schéma `PayslipExtraction`)
+    pour afficher un message lisible côté utilisateur sans jamais lui
+    exposer le détail technique brut."""
+
 EXTRACTION_PROMPT = (
     "Tu es un extracteur de données de bulletins de paie français. "
     "Analyse le texte brut suivant, extrait uniquement du bulletin, et "
@@ -68,7 +81,7 @@ class ClaudeExtractor:
 
     def extract(self, raw_text: str) -> PayslipExtraction:
         if not raw_text:
-            raise ValueError("Impossible d'extraire du texte de ce PDF (scan image ?).")
+            raise PayslipExtractionError("Impossible d'extraire du texte de ce PDF (scan image ?).")
 
         result = self._structured_llm.invoke(EXTRACTION_PROMPT.format(raw_text=raw_text))
         # with_structured_output() est typé `dict | BaseModel` ; il renvoie ici

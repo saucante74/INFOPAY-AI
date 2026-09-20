@@ -144,6 +144,23 @@ export interface components {
         ChatResponse: {
             /** Reply */
             reply: string;
+            /** Sources */
+            sources?: components["schemas"]["ChatSource"][] | null;
+        };
+        /**
+         * ChatSource
+         * @description Une source RAG citée dans une réponse du chat : le mois du bulletin
+         *     d'où vient l'extrait, et l'extrait de texte lui-même. Affichage
+         *     structuré côté frontend, indépendant de ce que le LLM choisit d'écrire
+         *     dans le texte de sa réponse (qui reste par ailleurs instruit de citer
+         *     sa source, voir SYSTEM_PROMPT — les deux ne sont pas redondants : l'un
+         *     est fiable mécaniquement, l'autre ne l'est pas).
+         */
+        ChatSource: {
+            /** Mois Annee */
+            mois_annee: string;
+            /** Extrait */
+            extrait: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

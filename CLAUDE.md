@@ -99,6 +99,16 @@ Each backend workflow triggers on `push`/`pull_request` paths scoped to
 `backend/**`; each frontend workflow, to `frontend/**` (plus the workflow
 file itself, so editing a workflow re-runs it).
 
+## Shell commands
+
+Never use `source venv/bin/activate && <command>`. Always call the venv's 
+binaries directly by relative path from the project root instead:
+- `backend/venv/bin/mypy --strict backend/app/`
+- `backend/venv/bin/pytest backend/tests/`
+- `backend/venv/bin/python3 ...`
+This avoids a `source` command that Claude Code's permission system 
+cannot statically analyze and will always flag for confirmation.
+
 ## Authentication and rate limiting
 
 A single account protects the whole API; see README.md, "Authentication",

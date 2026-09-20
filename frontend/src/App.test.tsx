@@ -107,7 +107,7 @@ describe("App — login modal triggered by a protected action", () => {
 
   it("opens the modal on a chat attempt, then resumes that exact message after logging in", async () => {
     const user = userEvent.setup();
-    mockSendChatMessage.mockResolvedValueOnce("Réponse de l'assistant.");
+    mockSendChatMessage.mockResolvedValueOnce({ reply: "Réponse de l'assistant.", sources: null });
     render(<App />);
     await screen.findByRole("heading", { name: "Assistant et analyse : Bulletin de salaire" });
 

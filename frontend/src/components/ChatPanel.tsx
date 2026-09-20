@@ -1,9 +1,21 @@
-import { Loader2, Send, Sparkles } from "lucide-react";
+import { ChevronDown, Loader2, Send, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { formatRetryDelay, getRateLimit, sendChatMessage } from "../api/client";
+import type { ChatSource } from "../api/types";
 import { requireAuth } from "../auth/authModal";
 import { decrementRateLimit } from "../hooks/useRateLimits";
+
+/**
+ * Delay after which the loading indicator switches to a "still working"
+ * message. Purely time-based, not tool-based: `/api/chat` is a single
+ * classic HTTP request/response (no SSE), so the frontend has no way to
+ * know which tool the agent is calling mid-flight — see RAPPORT.md for why
+ * a differentiated per-tool indicator isn't feasible without a streaming
+ * backend. This is deliberately honest about that: it reflects elapsed
+ * time only, never claims to know what the backend is doing.
+ */
+const SLOW_REPLY_DELAY_MS = 4000;
 
 /**
  * `as const satisfies readonly string[]`: `satisfies` checks the contract
@@ -22,26 +34,45 @@ const SUGGESTIONS = [
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  // Only ever set on assistant messages, and only when
+  // search_payslip_knowledge_tool found relevant extracts — see
+  // ChatSource/ChatResult in the backend's graph.py.
+  sources?: ChatSource[] | null;
 }
 
 export default function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isTakingLonger, setIsTakingLonger] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isLoading]);
 
+  useEffect(() => {
+    if (!isLoading) return;
+    const timer = setTimeout(() => {
+      setIsTakingLonger(true);
+    }, SLOW_REPLY_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isLoading]);
+
   const performSend = async (content: string): Promise<void> => {
     setMessages((prev) => [...prev, { role: "user", content }]);
     setInput("");
     setIsLoading(true);
+    // Reset for this send — `isLoading` turning true re-arms the effect
+    // above, but doesn't itself clear a "taking longer" flag left over
+    // from a previous slow reply.
+    setIsTakingLonger(false);
 
     try {
-      const reply = await sendChatMessage(content);
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      const { reply, sources } = await sendChatMessage(content);
+      setMessages((prev) => [...prev, { role: "assistant", content: reply, sources }]);
       // See UploadZone.tsx's identical call for why this is a safe local
       // update rather than a second network round trip.
       decrementRateLimit("chat");
@@ -104,16 +135,39 @@ export default function ChatPanel() {
         )}
 
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                m.role === "user"
-                  ? "bg-accent text-white"
-                  : "bg-surface text-ink border border-border"
-              }`}
-            >
-              {m.content}
+          <div key={i}>
+            <div className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
+                  m.role === "user"
+                    ? "bg-accent text-white"
+                    : "bg-surface text-ink border border-border"
+                }`}
+              >
+                {m.content}
+              </div>
             </div>
+
+            {m.sources && m.sources.length > 0 && (
+              <div className="mt-1 flex justify-start">
+                <details className="group max-w-[85%] rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink-soft">
+                  <summary className="flex cursor-pointer list-none items-center gap-1 font-medium marker:content-none">
+                    <ChevronDown className="h-3 w-3 shrink-0 transition-transform duration-200 group-open:rotate-180" />
+                    {`Sources (${String(m.sources.length)})`}
+                  </summary>
+                  <ul className="mt-2 space-y-2">
+                    {m.sources.map((s, sourceIndex) => (
+                      <li key={sourceIndex}>
+                        <span className="inline-block rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-ink-soft">
+                          {s.mois_annee}
+                        </span>
+                        <p className="mt-1 whitespace-pre-wrap text-ink-soft">{s.extrait}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+            )}
           </div>
         ))}
 
@@ -121,7 +175,9 @@ export default function ChatPanel() {
           <div className="flex justify-start">
             <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink-soft">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Analyse en cours…
+              {isTakingLonger
+                ? "Cela prend un peu plus de temps que d'habitude…"
+                : "Analyse en cours…"}
             </div>
           </div>
         )}
