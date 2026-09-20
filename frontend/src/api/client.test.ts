@@ -101,13 +101,28 @@ describe("uploadPayslip", () => {
 });
 
 describe("sendChatMessage", () => {
-  it("POSTs the message and returns only the reply text", async () => {
-    mockPost.mockResolvedValueOnce({ data: { reply: "La CSG est une cotisation sociale." } });
+  it("POSTs the message and returns the reply with no sources", async () => {
+    mockPost.mockResolvedValueOnce({
+      data: { reply: "La CSG est une cotisation sociale.", sources: null },
+    });
 
-    await expect(sendChatMessage("C'est quoi la CSG ?")).resolves.toBe(
-      "La CSG est une cotisation sociale."
-    );
+    await expect(sendChatMessage("C'est quoi la CSG ?")).resolves.toEqual({
+      reply: "La CSG est une cotisation sociale.",
+      sources: null,
+    });
     expect(mockPost).toHaveBeenCalledWith("/api/chat", { message: "C'est quoi la CSG ?" });
+  });
+
+  it("returns the RAG sources alongside the reply when present", async () => {
+    const sources = [{ mois_annee: "03/2025", extrait: "La CSG déductible est assise sur..." }];
+    mockPost.mockResolvedValueOnce({
+      data: { reply: "D'après votre bulletin de mars 2025 : ...", sources },
+    });
+
+    await expect(sendChatMessage("C'est quoi la CSG ?")).resolves.toEqual({
+      reply: "D'après votre bulletin de mars 2025 : ...",
+      sources,
+    });
   });
 });
 

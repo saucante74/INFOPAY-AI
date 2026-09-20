@@ -20,6 +20,9 @@ export type Payslip = components["schemas"]["Payslip"];
 /** Reply envelope of `POST /api/chat`. */
 export type ChatResponse = components["schemas"]["ChatResponse"];
 
+/** One RAG source cited in a `ChatResponse` — a month and the matching extract. */
+export type ChatSource = components["schemas"]["ChatSource"];
+
 /** Body of `POST /api/auth/login`. */
 export type LoginRequest = components["schemas"]["LoginRequest"];
 

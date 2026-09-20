@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 
 import FaqAccordion from "../components/FaqAccordion";
 
@@ -17,22 +17,48 @@ const RECENT_EXAMPLES = [
 ] as const satisfies readonly { file: string; label: string }[];
 
 const VARIED_EXAMPLES = [
-  { file: "bulletin_batirenov_06_2022.pdf", label: "BatiRenov — Juin 2022" },
   { file: "bulletin_pharmaouest_03_2023.pdf", label: "PharmaOuest — Mars 2023" },
   { file: "bulletin_clinique_11_2024.pdf", label: "Clinique — Novembre 2024" },
   { file: "bulletin_aerospace_08_2025.pdf", label: "AeroSpace — Août 2025" },
 ] as const satisfies readonly { file: string; label: string }[];
 
-/** One downloadable example link — `download` forces a save instead of an in-tab PDF preview. */
-function ExampleLink({ file, label }: { file: string; label: string }) {
+const KNOWN_LIMITATION_EXAMPLE = {
+  file: "bulletin_batirenov_06_2022.pdf",
+  label: "BatiRenov — Juin 2022",
+} as const satisfies { file: string; label: string };
+
+/**
+ * One downloadable example link — `download` forces a save instead of an
+ * in-tab PDF preview. `variant="limitation"` swaps the hover color from
+ * `accent` to `alert` (real WCAG contrast numbers against
+ * `bg-surface-raised`, both themes, in RAPPORT.md) and adds a permanently
+ * visible `AlertTriangle` icon, so the one example that's a known
+ * extraction failure is flagged without requiring a hover to notice it.
+ */
+function ExampleLink({
+  file,
+  label,
+  variant = "default",
+}: {
+  file: string;
+  label: string;
+  variant?: "default" | "limitation";
+}) {
   return (
     <a
       href={`/exemples/${file}`}
       download
-      className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-ink transition-colors hover:border-accent hover:text-accent"
+      className={`flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-ink transition-colors ${
+        variant === "limitation"
+          ? "hover:border-alert hover:text-alert"
+          : "hover:border-accent hover:text-accent"
+      }`}
     >
       <Download className="h-4 w-4 shrink-0" aria-hidden="true" />
       {label}
+      {variant === "limitation" && (
+        <AlertTriangle className="h-4 w-4 shrink-0 text-alert" aria-hidden="true" />
+      )}
     </a>
   );
 }
@@ -83,6 +109,19 @@ export default function HelpPage() {
             {VARIED_EXAMPLES.map((example) => (
               <ExampleLink key={example.file} {...example} />
             ))}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <h3 className="text-sm font-medium text-alert">Exemples de PDF non acceptés</h3>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div>
+              <ExampleLink {...KNOWN_LIMITATION_EXAMPLE} variant="limitation" />
+              <p className="mt-1 text-xs text-ink-soft">
+                Ce format est non valide et utilisé à titre d'exemple. Il n'est donc pas pris en
+                charge par le système.
+              </p>
+            </div>
           </div>
         </div>
       </section>

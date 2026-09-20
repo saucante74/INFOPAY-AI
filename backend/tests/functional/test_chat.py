@@ -38,7 +38,8 @@ def test_chat_happy_path_direct_answer(client, monkeypatch):
     response = client.post("/api/chat", json={"message": "C'est quoi la CSG ?"})
 
     assert response.status_code == 200
-    assert response.json() == {"reply": "La CSG est une cotisation sociale."}
+    # No tool call at all here: no RAG source to cite.
+    assert response.json() == {"reply": "La CSG est une cotisation sociale.", "sources": None}
 
 
 def test_chat_calls_the_rag_tool_end_to_end(client, monkeypatch, fake_vector_store):
@@ -68,8 +69,53 @@ def test_chat_calls_the_rag_tool_end_to_end(client, monkeypatch, fake_vector_sto
     response = client.post("/api/chat", json={"message": "C'est quoi la CSG ?"})
 
     assert response.status_code == 200
-    assert response.json() == {"reply": "La CSG déductible est assise sur le salaire brut."}
+    # fake_vector_store.hits (conftest.py) has one entry: mois_annee
+    # "03/2025", text "La CSG déductible est assise sur le salaire brut." —
+    # remapped to the ChatSource shape (`extrait` instead of `text`).
+    assert response.json() == {
+        "reply": "La CSG déductible est assise sur le salaire brut.",
+        "sources": [
+            {"mois_annee": "03/2025", "extrait": "La CSG déductible est assise sur le salaire brut."}
+        ],
+    }
     assert fake_llm.call_count == 2
+
+
+def test_chat_rag_tool_called_but_nothing_relevant_found_has_no_sources(
+    client, monkeypatch, fake_vector_store
+):
+    fake_vector_store.hits = []
+    monkeypatch.setattr(tools_mod, "get_vector_store", lambda: fake_vector_store)
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_payslip_knowledge_tool",
+                        "args": {"query": "prime de partage de la valeur"},
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content="Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés."
+            ),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    response = client.post(
+        "/api/chat", json={"message": "Qu'est-ce que la prime de partage de la valeur ?"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "reply": "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés.",
+        "sources": None,
+    }
 
 
 def test_chat_returns_500_when_the_llm_call_fails(client_no_raise, monkeypatch):

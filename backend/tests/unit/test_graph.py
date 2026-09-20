@@ -18,10 +18,13 @@ LangGraph à la main.
 """
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage
+import json
+
+from langchain_core.messages import AIMessage, ToolMessage
 from sqlmodel import Session
 
 import app.agent.graph as graph_mod
+import app.agent.tools as tools_mod
 import app.services.analytics as analytics_mod
 from app.models.payslip import Payslip
 
@@ -43,9 +46,9 @@ def test_agent_answers_directly_when_no_tool_call_is_needed(monkeypatch):
     fake_llm = _FakeLLM([AIMessage(content="Bonjour, comment puis-je vous aider ?")])
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
-    reply = graph_mod.run_chat("bonjour")
+    result = graph_mod.run_chat("bonjour")
 
-    assert reply == "Bonjour, comment puis-je vous aider ?"
+    assert result == {"reply": "Bonjour, comment puis-je vous aider ?", "sources": None}
     assert fake_llm.call_count == 1  # pas de boucle : END direct
 
 
@@ -86,9 +89,279 @@ def test_agent_calls_analytics_tool_then_answers(monkeypatch, test_engine):
     )
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
-    reply = graph_mod.run_chat("Quel est le total du net à payer ?")
+    result = graph_mod.run_chat("Quel est le total du net à payer ?")
 
-    assert reply == "Le total du net à payer est de 2300.0 euros."
+    assert result["reply"] == "Le total du net à payer est de 2300.0 euros."
+    # query_analytics n'est pas le tool RAG : aucune source à citer.
+    assert result["sources"] is None
     # 2 appels : la décision d'appeler l'outil, puis la reformulation après
     # que ToolNode a exécuté query_analytics et renvoyé son résultat.
     assert fake_llm.call_count == 2
+
+
+def _seed_multi_year(test_engine) -> None:
+    with Session(test_engine) as session:
+        session.add_all(
+            [
+                Payslip(
+                    mois_annee="11/2025",
+                    salaire_brut=3000.0,
+                    net_imposable=2400.0,
+                    net_a_payer=2300.0,
+                    total_cotisations_salariales=600.0,
+                    total_cotisations_patronales=900.0,
+                    cotisations_retraite=350.0,
+                    prelevement_source=100.0,
+                    raw_text="x",
+                    filename="f1.pdf",
+                ),
+                Payslip(
+                    mois_annee="01/2026",
+                    salaire_brut=3000.0,
+                    net_imposable=2400.0,
+                    net_a_payer=2300.0,
+                    total_cotisations_salariales=600.0,
+                    total_cotisations_patronales=900.0,
+                    cotisations_retraite=350.0,
+                    prelevement_source=130.0,
+                    raw_text="x",
+                    filename="f2.pdf",
+                ),
+                Payslip(
+                    mois_annee="06/2026",
+                    salaire_brut=3000.0,
+                    net_imposable=2400.0,
+                    net_a_payer=2300.0,
+                    total_cotisations_salariales=600.0,
+                    total_cotisations_patronales=900.0,
+                    cotisations_retraite=350.0,
+                    prelevement_source=140.0,
+                    raw_text="x",
+                    filename="f3.pdf",
+                ),
+            ]
+        )
+        session.commit()
+
+
+def test_agent_uses_date_debut_date_fin_for_a_specific_year_question(monkeypatch, test_engine):
+    # Reproduit le bug rapporté : des bulletins sur 2025 ET 2026, seule
+    # 2026 doit être sommée quand la question porte sur "2026".
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    _seed_multi_year(test_engine)
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {
+                            "operation": "somme",
+                            "champ": "prelevement_source",
+                            "date_debut": "01/2026",
+                            "date_fin": "12/2026",
+                        },
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="Le total des prélèvements à la source en 2026 est de 270.0 euros."),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("Somme des prélèvements à la source en 2026")
+
+    assert result["reply"] == "Le total des prélèvements à la source en 2026 est de 270.0 euros."
+    assert result["sources"] is None
+    # Le tool_call du LLM factice porte bien date_debut/date_fin (pas
+    # derniers_n_mois) — c'est ToolNode qui exécute réellement
+    # query_analytics avec ces arguments contre le moteur en mémoire, donc
+    # si le résultat ci-dessus est correct (270 = 130 + 140, pas 100+130+140
+    # = 370), c'est la preuve que le filtre par date a bien exclu 11/2025.
+    assert fake_llm.call_count == 2
+
+
+def test_agent_compares_two_periods_with_two_successive_tool_calls(monkeypatch, test_engine):
+    # "compare 2025 et 2026" : le LLM doit appeler l'outil une fois par
+    # période (pas de paramètre de comparaison dans le tool), le graphe
+    # bouclant agent -> tools -> agent -> tools -> agent avant la réponse
+    # finale.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    _seed_multi_year(test_engine)
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {
+                            "operation": "somme",
+                            "champ": "prelevement_source",
+                            "date_debut": "01/2025",
+                            "date_fin": "12/2025",
+                        },
+                        "id": "call_2025",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {
+                            "operation": "somme",
+                            "champ": "prelevement_source",
+                            "date_debut": "01/2026",
+                            "date_fin": "12/2026",
+                        },
+                        "id": "call_2026",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content=(
+                    "En 2025, le total des prélèvements à la source était de 100.0 euros, "
+                    "contre 270.0 euros en 2026, soit une hausse de 170.0 euros."
+                )
+            ),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("Compare les prélèvements à la source entre 2025 et 2026")
+
+    assert "100.0" in result["reply"] and "270.0" in result["reply"]
+    assert result["sources"] is None
+    # 3 appels : décision du 1er tool_call (2025), décision du 2e (2026)
+    # après avoir reçu le résultat du 1er, puis la reformulation finale
+    # après le résultat du 2e — deux exécutions réelles de query_analytics,
+    # chacune avec sa propre plage, pas un seul appel avec un paramètre de
+    # comparaison.
+    assert fake_llm.call_count == 3
+
+
+def test_system_prompt_instructs_honesty_when_nothing_is_found():
+    # Le tool signale "rien trouvé" en renvoyant extraits_trouves vide
+    # (voir _build_hits dans vectorstore.py) ; c'est au system prompt de
+    # dire au LLM comment réagir à ce signal, puisque le tool lui-même ne
+    # peut pas formuler la réponse finale à la place du LLM.
+    content = graph_mod.SYSTEM_PROMPT.content
+    assert "extraits_trouves" in content
+    assert "vide" in content
+    assert "aucune information" in content.lower()
+
+
+def test_system_prompt_instructs_citing_the_source():
+    content = graph_mod.SYSTEM_PROMPT.content
+    assert "mois_annee" in content
+    assert "source" in content.lower()
+
+
+def test_agent_gets_empty_extraits_trouves_when_vector_store_has_no_relevant_hit(
+    monkeypatch, fake_vector_store
+):
+    # fake_vector_store.hits vide simule ce que ChromaVectorStore.search()
+    # renvoie réellement quand aucun résultat n'a été trouvé, ou quand tous
+    # les résultats sont sous le seuil de similarité (_build_hits) — les
+    # deux cas produisent la même liste vide, donc un seul scénario suffit
+    # à ce niveau.
+    fake_vector_store.hits = []
+    monkeypatch.setattr(tools_mod, "get_vector_store", lambda: fake_vector_store)
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "search_payslip_knowledge_tool",
+                        "args": {"query": "qu'est-ce que la prime de partage de la valeur ?"},
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content="Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés."
+            ),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("qu'est-ce que la prime de partage de la valeur ?")
+
+    assert (
+        result["reply"] == "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés."
+    )
+    # Le tool a été appelé mais n'a rien trouvé de pertinent (hits vide) :
+    # pas de source à afficher, jamais une liste vide.
+    assert result["sources"] is None
+    assert fake_llm.call_count == 2
+
+
+def _search_tool_message(*hits: dict, tool_call_id: str = "call_1") -> ToolMessage:
+    """Construit le ToolMessage que ToolNode produit réellement pour
+    search_payslip_knowledge_tool (voir SearchKnowledgeResult dans
+    tools.py) : content = JSON sérialisé de {"extraits_trouves": [...]}."""
+    return ToolMessage(
+        content=json.dumps({"extraits_trouves": list(hits)}),
+        name="search_payslip_knowledge_tool",
+        tool_call_id=tool_call_id,
+    )
+
+
+def test_extract_sources_returns_none_when_the_search_tool_was_never_called():
+    messages = [AIMessage(content="Bonjour !")]
+    assert graph_mod._extract_sources(messages) is None
+
+
+def test_extract_sources_returns_none_when_the_search_tool_found_nothing():
+    messages = [_search_tool_message()]  # extraits_trouves: []
+    assert graph_mod._extract_sources(messages) is None
+
+
+def test_extract_sources_maps_hits_to_the_chatsource_shape():
+    messages = [
+        _search_tool_message(
+            {"text": "La CSG déductible est assise sur le salaire brut.", "mois_annee": "03/2025"}
+        )
+    ]
+
+    sources = graph_mod._extract_sources(messages)
+
+    # Forme exacte du TypedDict ChatSource : mois_annee + extrait (pas
+    # "text", la clé interne de vectorstore.py) — rien de plus.
+    assert sources == [
+        {"mois_annee": "03/2025", "extrait": "La CSG déductible est assise sur le salaire brut."}
+    ]
+
+
+def test_extract_sources_aggregates_across_several_search_tool_calls():
+    # Le LLM peut appeler search_payslip_knowledge_tool plusieurs fois dans
+    # la même conversation (ex: deux questions successives, ou une
+    # reformulation) — chaque appel produit son propre ToolMessage.
+    messages = [
+        _search_tool_message(
+            {"text": "extrait 1", "mois_annee": "01/2025"}, tool_call_id="call_1"
+        ),
+        AIMessage(content=""),  # tour intermédiaire, ignoré (pas un ToolMessage du tool RAG)
+        _search_tool_message(
+            {"text": "extrait 2", "mois_annee": "02/2025"}, tool_call_id="call_2"
+        ),
+    ]
+
+    sources = graph_mod._extract_sources(messages)
+
+    assert sources == [
+        {"mois_annee": "01/2025", "extrait": "extrait 1"},
+        {"mois_annee": "02/2025", "extrait": "extrait 2"},
+    ]
