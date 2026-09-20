@@ -118,8 +118,7 @@ export default function HelpPage() {
             <div>
               <ExampleLink {...KNOWN_LIMITATION_EXAMPLE} variant="limitation" />
               <p className="mt-1 text-xs text-ink-soft">
-                Ce bulletin illustre une limite actuelle de l'extraction (mise en page non
-                standard).
+                Ce format est non valide et utilisé à titre d'exemple. Il n'est donc pas pris en charge par le système.
               </p>
             </div>
           </div>
