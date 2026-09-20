@@ -31,7 +31,7 @@ app = FastAPI(title="InfoPay AI", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "https://infopay-lyart.vercel.app/", "https://infopay-ai.fr/", "https://www.infopay-ai.fr/"],  # Vite dev server
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "https://infopay-lyart.vercel.app", "https://infopay-ai.fr", "https://www.infopay-ai.fr"],  # Vite dev server
     allow_methods=["*"],
     allow_headers=["*"],
     # Browsers hide non-safelisted response headers from cross-origin JS;
