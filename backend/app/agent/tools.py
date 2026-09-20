@@ -11,12 +11,14 @@ def query_analytics(
     operation: str,
     champ: str,
     derniers_n_mois: Optional[int] = None,
+    date_debut: Optional[str] = None,
+    date_fin: Optional[str] = None,
 ) -> AnalyticsResult:
     """Calcule une valeur EXACTE (somme, moyenne, min, max) sur les bulletins
     de paie déjà importés par l'utilisateur. Utilise CET outil dès que la
     question porte sur un total, une moyenne, une évolution chiffrée ou une
     période (ex: 'total cotisations retraite sur 4 mois', 'moyenne du net
-    à payer').
+    à payer', 'somme des prélèvements à la source en 2026').
 
     Args:
         operation: 'somme', 'moyenne', 'min' ou 'max'.
@@ -24,13 +26,39 @@ def query_analytics(
             'cotisations_salariales', 'cotisations_patronales',
             'cotisations_retraite', 'prelevement_source'.
         derniers_n_mois: nombre de mois les plus récents à considérer.
-            Omettre pour utiliser tout l'historique disponible.
+            Ignoré dès que date_debut ou date_fin est fourni. Omettre si tu
+            fournis une date, ou pour utiliser tout l'historique disponible
+            si aucune date ni ce paramètre n'est fourni.
+        date_debut: borne de début de période, format 'MM/YYYY'. Calcule
+            toi-même cette valeur à partir de la formulation de la question
+            et de ta connaissance de la date actuelle — ne demande jamais
+            cette date à l'utilisateur. Exemples :
+            - "en 2026" -> date_debut="01/2026", date_fin="12/2026"
+            - "au 2e trimestre 2025" -> date_debut="04/2025",
+              date_fin="06/2025"
+            - "depuis mars 2025" -> date_debut="03/2025" (date_fin omis :
+              va jusqu'au bulletin le plus récent disponible)
+            - "entre janvier 2024 et juin 2024" -> date_debut="01/2024",
+              date_fin="06/2024"
+            Si fourni (seul ou avec date_fin), prime sur derniers_n_mois.
+        date_fin: borne de fin de période, format 'MM/YYYY'. Même logique
+            de calcul que date_debut ; voir ses exemples.
+
+    Pour comparer deux périodes (ex: 'compare 2025 et 2026'), n'invente PAS
+    de paramètre de comparaison : appelle cet outil une fois par période
+    (deux appels séparés, chacun avec son propre date_debut/date_fin), puis
+    rédige toi-même la comparaison à partir des deux résultats exacts
+    obtenus.
     """
     # `operation` reste un `str` nu : la signature de ce tool est le schéma
     # envoyé au LLM, un Literal y changerait le contrat. run_analytics_query
     # valide déjà les valeurs inconnues et renvoie une erreur métier.
     return run_analytics_query(
-        operation=cast(Operation, operation), champ=champ, derniers_n_mois=derniers_n_mois
+        operation=cast(Operation, operation),
+        champ=champ,
+        derniers_n_mois=derniers_n_mois,
+        date_debut=date_debut,
+        date_fin=date_fin,
     )
 
 

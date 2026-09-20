@@ -59,18 +59,37 @@ def _load_dataframe() -> pd.DataFrame:
     return df.sort_values("_date")
 
 
+def _parse_mois_annee(value: str) -> datetime | None:
+    """Parse une chaîne 'MM/YYYY' en `datetime` comparable, ou `None` si le
+    format est invalide. Utilisé pour comparer date_debut/date_fin sur leur
+    valeur réelle (mois + année), pas sur l'ordre lexicographique des
+    chaînes ('09/2026' > '12/2025' en comparaison de chaînes, faux
+    chronologiquement)."""
+    try:
+        return datetime.strptime(value, "%m/%Y")
+    except ValueError:
+        return None
+
+
 def run_analytics_query(
     operation: Operation,
     champ: str,
     derniers_n_mois: int | None = None,
+    date_debut: str | None = None,
+    date_fin: str | None = None,
 ) -> AnalyticsResult:
     """Exécute un calcul exact sur les bulletins stockés.
 
     Args:
         operation: 'somme' | 'moyenne' | 'min' | 'max'
         champ: une des clés de FIELD_MAP
-        derniers_n_mois: si fourni, ne considère que les N bulletins les
-            plus récents ; sinon, considère tout l'historique.
+        derniers_n_mois: si fourni et que ni date_debut ni date_fin ne le
+            sont, ne considère que les N bulletins les plus récents.
+            Ignoré si date_debut ou date_fin est fourni.
+        date_debut: borne de début de période, format 'MM/YYYY'. Si fournie
+            (seule ou avec date_fin), prime sur derniers_n_mois.
+        date_fin: borne de fin de période, format 'MM/YYYY'. Voir
+            date_debut.
     """
     if champ not in FIELD_MAP:
         return {"error": f"Champ inconnu: {champ}. Champs valides: {list(FIELD_MAP)}"}
@@ -79,7 +98,31 @@ def run_analytics_query(
     if df.empty:
         return {"error": "Aucun bulletin de paie n'a encore été importé."}
 
-    if derniers_n_mois:
+    if date_debut is not None or date_fin is not None:
+        debut_dt = _parse_mois_annee(date_debut) if date_debut is not None else None
+        if date_debut is not None and debut_dt is None:
+            return {"error": f"date_debut invalide, format attendu MM/YYYY: {date_debut!r}"}
+
+        fin_dt = _parse_mois_annee(date_fin) if date_fin is not None else None
+        if date_fin is not None and fin_dt is None:
+            return {"error": f"date_fin invalide, format attendu MM/YYYY: {date_fin!r}"}
+
+        if debut_dt is not None and fin_dt is not None and debut_dt > fin_dt:
+            return {
+                "error": f"date_debut ({date_debut}) est postérieure à date_fin ({date_fin})."
+            }
+
+        if debut_dt is not None:
+            df = df[df["_date"] >= debut_dt]
+        if fin_dt is not None:
+            df = df[df["_date"] <= fin_dt]
+
+        if df.empty:
+            return {
+                "error": "Aucun bulletin de paie dans la période demandée "
+                f"({date_debut or '…'} à {date_fin or '…'})."
+            }
+    elif derniers_n_mois:
         df = df.tail(derniers_n_mois)
 
     column = FIELD_MAP[champ]
