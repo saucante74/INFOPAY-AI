@@ -46,6 +46,17 @@ class AnalyticsError(TypedDict):
 AnalyticsResult = AnalyticsSuccess | AnalyticsError
 
 
+class AvailablePeriod(TypedDict):
+    """Bornes réelles des bulletins actuellement en base. Utilisé pour
+    injecter du contexte factuel dans le prompt système (voir
+    app/agent/graph.py) — jamais pour qu'un LLM devine une période
+    plausible à partir de sa mémoire d'entraînement."""
+
+    premier_mois: str
+    dernier_mois: str
+    nombre_bulletins: int
+
+
 def _load_dataframe() -> pd.DataFrame:
     with Session(engine) as session:
         payslips = session.exec(select(Payslip)).all()
@@ -69,6 +80,23 @@ def _parse_mois_annee(value: str) -> datetime | None:
         return datetime.strptime(value, "%m/%Y")
     except ValueError:
         return None
+
+
+def get_available_period() -> AvailablePeriod | None:
+    """Renvoie la plage de mois réellement couverte par les bulletins
+    importés, ou None si aucun bulletin n'a encore été importé. Une simple
+    lecture des bornes déjà triées par _load_dataframe() — pas un calcul
+    agrégé (somme/moyenne), donc pas soumis à la même contrainte
+    "jamais par le LLM" que run_analytics_query : c'est un fait descriptif
+    sur les données, pas une valeur dérivée qu'il faudrait interpréter."""
+    df = _load_dataframe()
+    if df.empty:
+        return None
+    return {
+        "premier_mois": df["mois_annee"].iloc[0],
+        "dernier_mois": df["mois_annee"].iloc[-1],
+        "nombre_bulletins": len(df),
+    }
 
 
 def run_analytics_query(

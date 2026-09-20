@@ -25,16 +25,24 @@ COLLECTION_NAME = "payslips"
 # `Collection.query()` renvoie par défaut une distance L2 au carré sur des
 # embeddings normalisés (all-MiniLM-L6-v2, la fonction par défaut de
 # Chroma) : 0.0 = chunk identique à la requête, jusqu'à 4.0 = opposé.
-# Vérifié empiriquement (voir RAPPORT.md) : un texte identique donne 0.0,
-# une requête sans aucun rapport lexical donne ~1.8. Ce seuil est
-# volontairement conservateur — il n'écarte que les cas franchement
-# dégénérés. Les tests empiriques montrent que l'embedding par défaut (un
-# modèle anglophone généraliste, sur du français, sur des chunks courts) ne
-# sépare PAS de façon fiable une question française hors-sujet d'une
-# question française pertinente dans la zone 1.0-1.3 : un seuil plus
-# agressif y rejetterait autant de bonnes réponses que de mauvaises. Voir
-# RAPPORT.md pour la méthodologie et ses limites.
-SIMILARITY_DISTANCE_THRESHOLD = 1.5
+#
+# Resserré de 1.5 à 1.1 (voir RAPPORT.md pour la méthodologie complète et
+# les mesures) après qu'un cas réel ("quelle différence entre salaire
+# moyen et salaire médian ?", une question générale sans lien avec le
+# contenu d'un bulletin précis) a montré que 1.5 laissait passer
+# pratiquement tout ce qui contient le mot "salaire", pertinent ou non.
+# 1.1 garde 5/6 questions pertinentes testées (paraphrases réalistes,
+# 0.55-0.97) et exclut 6/7 questions hors-sujet testées (1.13-1.78),
+# y compris le cas ci-dessus (1.13). Toujours pas parfait : une question
+# hors-sujet ("quel est le salaire minimum en France ?", 0.89) reste sous
+# le seuil, et une question pertinente ("différence net imposable / net à
+# payer ?", 1.18) est exclue à tort — l'embedding par défaut (généraliste
+# anglophone, sur du français, sur des chunks courts) ne permet toujours
+# pas de séparation parfaite. C'est pourquoi cette tâche combine ce
+# resserrement avec une deuxième mesure côté prompt système (voir
+# _build_system_prompt() dans graph.py) : décourager l'appel du tool sur
+# des questions générales plutôt que de compter uniquement sur le seuil.
+SIMILARITY_DISTANCE_THRESHOLD = 1.1
 
 
 def _build_hits(
