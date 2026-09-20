@@ -163,7 +163,8 @@ def test_upload_with_valid_token_is_200(auth_client, token, sample_pdf_bytes):
 def test_chat_with_valid_token_is_200(auth_client, token, fake_llm):
     response = _chat(auth_client, _bearer(token))
     assert response.status_code == 200
-    assert response.json() == {"reply": "Réponse de test."}
+    # No tool call in this fixture's response, so no RAG source to cite.
+    assert response.json() == {"reply": "Réponse de test.", "sources": None}
 
 
 # --- rate limiting --------------------------------------------------------

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ChatResponse } from "../api/types";
 import ChatPanel from "./ChatPanel";
 
 vi.mock("../api/client", () => ({
@@ -66,7 +67,7 @@ describe("ChatPanel", () => {
   });
 
   it("clicking a suggestion sends it and hides the suggestions", async () => {
-    const { promise, resolve } = deferred<string>();
+    const { promise, resolve } = deferred<ChatResponse>();
     mockSendChatMessage.mockReturnValueOnce(promise);
     render(<ChatPanel />);
 
@@ -78,7 +79,7 @@ describe("ChatPanel", () => {
     // The suggestion text now lives in the user's own message bubble.
     expect(screen.getByText(suggestion)).toBeInTheDocument();
 
-    resolve("Le net à payer moyen est de 2 340 €.");
+    resolve({ reply: "Le net à payer moyen est de 2 340 €.", sources: null });
     expect(await screen.findByText("Le net à payer moyen est de 2 340 €.")).toBeInTheDocument();
     // A successful send consumed one hit of the `chat` scope's budget.
     expect(mockDecrementRateLimit).toHaveBeenCalledWith("chat");
@@ -86,7 +87,7 @@ describe("ChatPanel", () => {
 
   it("shows a loading indicator while the reply is pending, and disables the submit button", async () => {
     const user = userEvent.setup();
-    const { promise, resolve } = deferred<string>();
+    const { promise, resolve } = deferred<ChatResponse>();
     mockSendChatMessage.mockReturnValueOnce(promise);
     render(<ChatPanel />);
 
@@ -101,7 +102,7 @@ describe("ChatPanel", () => {
     expect(screen.getByText("Analyse en cours…")).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
 
-    resolve("Bonjour ! Comment puis-je vous aider ?");
+    resolve({ reply: "Bonjour ! Comment puis-je vous aider ?", sources: null });
 
     await waitFor(() => {
       expect(screen.queryByText("Analyse en cours…")).not.toBeInTheDocument();
@@ -116,7 +117,7 @@ describe("ChatPanel", () => {
     // reasoning CONVENTIONS.md gives for using `fireEvent.drop` over
     // `userEvent` for drag-and-drop).
     vi.useFakeTimers();
-    const { promise, resolve } = deferred<string>();
+    const { promise, resolve } = deferred<ChatResponse>();
     mockSendChatMessage.mockReturnValueOnce(promise);
     const { container } = render(<ChatPanel />);
 
@@ -134,7 +135,7 @@ describe("ChatPanel", () => {
     expect(screen.getByText("Cela prend un peu plus de temps que d'habitude…")).toBeInTheDocument();
     expect(screen.queryByText("Analyse en cours…")).not.toBeInTheDocument();
 
-    resolve("Bonjour ! Comment puis-je vous aider ?");
+    resolve({ reply: "Bonjour ! Comment puis-je vous aider ?", sources: null });
     await act(async () => {
       await promise;
     });
@@ -147,7 +148,7 @@ describe("ChatPanel", () => {
 
   it("does not show the 'taking longer' message for a reply that resolves quickly", async () => {
     const user = userEvent.setup();
-    mockSendChatMessage.mockResolvedValueOnce("Réponse rapide.");
+    mockSendChatMessage.mockResolvedValueOnce({ reply: "Réponse rapide.", sources: null });
     render(<ChatPanel />);
 
     const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
@@ -221,7 +222,7 @@ describe("ChatPanel", () => {
 
   it("aligns the user's message to the right and the assistant's reply to the left", async () => {
     const user = userEvent.setup();
-    mockSendChatMessage.mockResolvedValueOnce("Réponse de l'assistant.");
+    mockSendChatMessage.mockResolvedValueOnce({ reply: "Réponse de l'assistant.", sources: null });
     render(<ChatPanel />);
 
     const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
@@ -262,7 +263,7 @@ describe("ChatPanel", () => {
     mockRequireAuth.mockImplementation((action?: () => void) => {
       resumeSend = action;
     });
-    mockSendChatMessage.mockResolvedValueOnce("Réponse de l'assistant.");
+    mockSendChatMessage.mockResolvedValueOnce({ reply: "Réponse de l'assistant.", sources: null });
     render(<ChatPanel />);
 
     const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
@@ -279,5 +280,90 @@ describe("ChatPanel", () => {
     expect(mockSendChatMessage).toHaveBeenCalledWith("Une question");
     expect(screen.getByText("Une question")).toBeInTheDocument();
     expect(await screen.findByText("Réponse de l'assistant.")).toBeInTheDocument();
+  });
+});
+
+describe("ChatPanel — RAG sources", () => {
+  it("shows a collapsible Sources section, collapsed by default, when the reply has sources", async () => {
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "D'après votre bulletin de mars 2025 : la CSG est déductible.",
+      sources: [
+        {
+          mois_annee: "03/2025",
+          extrait: "La CSG déductible est assise sur le salaire brut.",
+        },
+      ],
+    });
+    render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "C'est quoi la CSG ?{enter}");
+    await screen.findByText("D'après votre bulletin de mars 2025 : la CSG est déductible.");
+
+    const summary = screen.getByText("Sources (1)");
+    const details = summary.closest("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+
+    // Collapsed by default, but the content is still in the DOM (native
+    // <details>, same pattern as FaqAccordion) — visible once expanded.
+    expect(screen.getByText("03/2025")).toBeInTheDocument();
+    expect(
+      screen.getByText("La CSG déductible est assise sur le salaire brut.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows one entry per source, each with its own month and extract", async () => {
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "Réponse combinant deux bulletins.",
+      sources: [
+        { mois_annee: "01/2025", extrait: "Premier extrait." },
+        { mois_annee: "02/2025", extrait: "Second extrait." },
+      ],
+    });
+    render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "Compare deux bulletins{enter}");
+    await screen.findByText("Réponse combinant deux bulletins.");
+
+    expect(screen.getByText("Sources (2)")).toBeInTheDocument();
+    expect(screen.getByText("01/2025")).toBeInTheDocument();
+    expect(screen.getByText("Premier extrait.")).toBeInTheDocument();
+    expect(screen.getByText("02/2025")).toBeInTheDocument();
+    expect(screen.getByText("Second extrait.")).toBeInTheDocument();
+  });
+
+  it("does not show a Sources section when sources is null", async () => {
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "Le total du net à payer est de 2300.0 euros.",
+      sources: null,
+    });
+    render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "Quel est le total ?{enter}");
+    await screen.findByText("Le total du net à payer est de 2300.0 euros.");
+
+    expect(screen.queryByText(/^Sources \(/)).not.toBeInTheDocument();
+  });
+
+  it("does not show a Sources section for the user's own message", async () => {
+    const user = userEvent.setup();
+    mockSendChatMessage.mockResolvedValueOnce({
+      reply: "D'après votre bulletin de mars 2025 : ...",
+      sources: [{ mois_annee: "03/2025", extrait: "Un extrait." }],
+    });
+    render(<ChatPanel />);
+
+    const input = screen.getByPlaceholderText("Posez une question sur vos bulletins…");
+    await user.type(input, "C'est quoi la CSG ?{enter}");
+    await screen.findByText("D'après votre bulletin de mars 2025 : ...");
+
+    // Exactly one Sources section, not one per message.
+    expect(screen.getAllByText("Sources (1)")).toHaveLength(1);
   });
 });

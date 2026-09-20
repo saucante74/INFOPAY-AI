@@ -18,7 +18,9 @@ LangGraph à la main.
 """
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage
+import json
+
+from langchain_core.messages import AIMessage, ToolMessage
 from sqlmodel import Session
 
 import app.agent.graph as graph_mod
@@ -44,9 +46,9 @@ def test_agent_answers_directly_when_no_tool_call_is_needed(monkeypatch):
     fake_llm = _FakeLLM([AIMessage(content="Bonjour, comment puis-je vous aider ?")])
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
-    reply = graph_mod.run_chat("bonjour")
+    result = graph_mod.run_chat("bonjour")
 
-    assert reply == "Bonjour, comment puis-je vous aider ?"
+    assert result == {"reply": "Bonjour, comment puis-je vous aider ?", "sources": None}
     assert fake_llm.call_count == 1  # pas de boucle : END direct
 
 
@@ -87,9 +89,11 @@ def test_agent_calls_analytics_tool_then_answers(monkeypatch, test_engine):
     )
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
-    reply = graph_mod.run_chat("Quel est le total du net à payer ?")
+    result = graph_mod.run_chat("Quel est le total du net à payer ?")
 
-    assert reply == "Le total du net à payer est de 2300.0 euros."
+    assert result["reply"] == "Le total du net à payer est de 2300.0 euros."
+    # query_analytics n'est pas le tool RAG : aucune source à citer.
+    assert result["sources"] is None
     # 2 appels : la décision d'appeler l'outil, puis la reformulation après
     # que ToolNode a exécuté query_analytics et renvoyé son résultat.
     assert fake_llm.call_count == 2
@@ -169,9 +173,10 @@ def test_agent_uses_date_debut_date_fin_for_a_specific_year_question(monkeypatch
     )
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
-    reply = graph_mod.run_chat("Somme des prélèvements à la source en 2026")
+    result = graph_mod.run_chat("Somme des prélèvements à la source en 2026")
 
-    assert reply == "Le total des prélèvements à la source en 2026 est de 270.0 euros."
+    assert result["reply"] == "Le total des prélèvements à la source en 2026 est de 270.0 euros."
+    assert result["sources"] is None
     # Le tool_call du LLM factice porte bien date_debut/date_fin (pas
     # derniers_n_mois) — c'est ToolNode qui exécute réellement
     # query_analytics avec ces arguments contre le moteur en mémoire, donc
@@ -232,9 +237,10 @@ def test_agent_compares_two_periods_with_two_successive_tool_calls(monkeypatch, 
     )
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
-    reply = graph_mod.run_chat("Compare les prélèvements à la source entre 2025 et 2026")
+    result = graph_mod.run_chat("Compare les prélèvements à la source entre 2025 et 2026")
 
-    assert "100.0" in reply and "270.0" in reply
+    assert "100.0" in result["reply"] and "270.0" in result["reply"]
+    assert result["sources"] is None
     # 3 appels : décision du 1er tool_call (2025), décision du 2e (2026)
     # après avoir reçu le résultat du 1er, puis la reformulation finale
     # après le résultat du 2e — deux exécutions réelles de query_analytics,
@@ -291,7 +297,71 @@ def test_agent_gets_empty_extraits_trouves_when_vector_store_has_no_relevant_hit
     )
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
-    reply = graph_mod.run_chat("qu'est-ce que la prime de partage de la valeur ?")
+    result = graph_mod.run_chat("qu'est-ce que la prime de partage de la valeur ?")
 
-    assert reply == "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés."
+    assert (
+        result["reply"] == "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés."
+    )
+    # Le tool a été appelé mais n'a rien trouvé de pertinent (hits vide) :
+    # pas de source à afficher, jamais une liste vide.
+    assert result["sources"] is None
     assert fake_llm.call_count == 2
+
+
+def _search_tool_message(*hits: dict, tool_call_id: str = "call_1") -> ToolMessage:
+    """Construit le ToolMessage que ToolNode produit réellement pour
+    search_payslip_knowledge_tool (voir SearchKnowledgeResult dans
+    tools.py) : content = JSON sérialisé de {"extraits_trouves": [...]}."""
+    return ToolMessage(
+        content=json.dumps({"extraits_trouves": list(hits)}),
+        name="search_payslip_knowledge_tool",
+        tool_call_id=tool_call_id,
+    )
+
+
+def test_extract_sources_returns_none_when_the_search_tool_was_never_called():
+    messages = [AIMessage(content="Bonjour !")]
+    assert graph_mod._extract_sources(messages) is None
+
+
+def test_extract_sources_returns_none_when_the_search_tool_found_nothing():
+    messages = [_search_tool_message()]  # extraits_trouves: []
+    assert graph_mod._extract_sources(messages) is None
+
+
+def test_extract_sources_maps_hits_to_the_chatsource_shape():
+    messages = [
+        _search_tool_message(
+            {"text": "La CSG déductible est assise sur le salaire brut.", "mois_annee": "03/2025"}
+        )
+    ]
+
+    sources = graph_mod._extract_sources(messages)
+
+    # Forme exacte du TypedDict ChatSource : mois_annee + extrait (pas
+    # "text", la clé interne de vectorstore.py) — rien de plus.
+    assert sources == [
+        {"mois_annee": "03/2025", "extrait": "La CSG déductible est assise sur le salaire brut."}
+    ]
+
+
+def test_extract_sources_aggregates_across_several_search_tool_calls():
+    # Le LLM peut appeler search_payslip_knowledge_tool plusieurs fois dans
+    # la même conversation (ex: deux questions successives, ou une
+    # reformulation) — chaque appel produit son propre ToolMessage.
+    messages = [
+        _search_tool_message(
+            {"text": "extrait 1", "mois_annee": "01/2025"}, tool_call_id="call_1"
+        ),
+        AIMessage(content=""),  # tour intermédiaire, ignoré (pas un ToolMessage du tool RAG)
+        _search_tool_message(
+            {"text": "extrait 2", "mois_annee": "02/2025"}, tool_call_id="call_2"
+        ),
+    ]
+
+    sources = graph_mod._extract_sources(messages)
+
+    assert sources == [
+        {"mois_annee": "01/2025", "extrait": "extrait 1"},
+        {"mois_annee": "02/2025", "extrait": "extrait 2"},
+    ]

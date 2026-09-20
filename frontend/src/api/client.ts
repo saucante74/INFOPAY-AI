@@ -46,9 +46,11 @@ export async function deletePayslip(id: number): Promise<void> {
   await api.delete(`/api/payslips/${String(id)}`);
 }
 
-export async function sendChatMessage(message: string): Promise<string> {
+/** The reply text plus any RAG sources cited to produce it (`null` when
+ * search_payslip_knowledge_tool wasn't used, or found nothing relevant). */
+export async function sendChatMessage(message: string): Promise<ChatResponse> {
   const { data } = await api.post<ChatResponse>("/api/chat", { message });
-  return data.reply;
+  return data;
 }
 
 /** The current upload/chat quotas. Requires auth — rejects with a 401 if
