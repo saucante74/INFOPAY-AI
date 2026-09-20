@@ -1,4 +1,5 @@
 import { BrowserRouter, Route, Routes } from "react-router";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import RootLayout from "./layouts/RootLayout";
 import AnalyzerPage from "./pages/AnalyzerPage";
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
+      <SpeedInsights />
     </BrowserRouter>
   );
 }
