@@ -393,6 +393,101 @@ def test_system_prompt_distinguishes_calculation_periode_from_available_period(
     assert "JAMAIS" in content and "confonds" in content.lower()
 
 
+def test_system_prompt_forbids_inventing_a_calendar_window(monkeypatch, test_engine):
+    # Nouveau bug rapporté, distinct de la confusion periode/période totale
+    # ci-dessus : sur une question "6 derniers mois" avec seulement 3
+    # bulletins disponibles, le LLM a une fois répondu en citant une
+    # fenêtre calendaire de 6 mois complets ("janvier à juin") qu'aucun
+    # outil n'a calculée — derniers_n_mois sélectionne des BULLETINS (par
+    # nombre de lignes), pas un intervalle calendaire depuis aujourd'hui.
+    # Cette règle doit être générale (vaut pour toute réponse de calcul
+    # utilisant derniers_n_mois), donc ce test vérifie la présence de
+    # l'interdiction elle-même, pas un exemple chiffré particulier.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "plage calendaire" in content
+    assert "derniers_n_mois" in content
+    assert "EXPLICITEMENT" in content or "explicitement" in content.lower()
+
+
+def test_agent_reports_the_real_periode_instead_of_an_invented_calendar_window_end_to_end(
+    monkeypatch, test_engine
+):
+    # Scénario contrôlé où le nombre de bulletins disponibles (3) est
+    # inférieur à derniers_n_mois demandé (6), avec une date du jour
+    # mockée loin après ces 3 bulletins (comme dans le bug réel rapporté :
+    # 3 bulletins de 01/2026 à 03/2026, date du jour en septembre 2026).
+    # Le faux LLM script ici le comportement ATTENDU (fidèle au champ
+    # periode réel, signalant le manque de bulletins) plutôt que le
+    # comportement bogué (fenêtre calendaire inventée) : comme les autres
+    # tests "bout en bout" de ce fichier, il ne peut pas prouver que le
+    # VRAI Claude choisit ce comportement (voir RAPPORT.md pour la preuve
+    # empirique contre l'API réelle) — il vérifie que le mécanisme
+    # d'injection (periode réel du résultat, disponible pour la
+    # reformulation finale) fonctionne bout en bout via run_chat().
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    monkeypatch.setattr(graph_mod, "_today", lambda: date(2026, 9, 15))
+    with Session(test_engine) as session:
+        session.add_all(
+            [
+                Payslip(
+                    mois_annee=m,
+                    salaire_brut=3000.0,
+                    net_imposable=2400.0,
+                    net_a_payer=2300.0,
+                    total_cotisations_salariales=600.0,
+                    total_cotisations_patronales=900.0,
+                    cotisations_retraite=350.0,
+                    prelevement_source=120.0,
+                    raw_text="x",
+                    filename="f.pdf",
+                )
+                for m in ["01/2026", "02/2026", "03/2026"]
+            ]
+        )
+        session.commit()
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {
+                            "operation": "somme",
+                            "champ": "salaire_brut",
+                            "derniers_n_mois": 6,
+                        },
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content=(
+                    "Vous avez demandé les 6 derniers mois, mais seuls 3 bulletins "
+                    "sont disponibles au total, couvrant janvier à mars 2026. La "
+                    "somme sur ces 3 mois est de 9000.0 euros."
+                )
+            ),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat(
+        "Quelle est la somme de mon salaire brut sur les 6 derniers mois ?"
+    )
+
+    # La réponse reflète fidèlement les 3 bulletins réels (janvier à mars
+    # 2026), jamais une fenêtre calendaire de 6 mois complets inventée
+    # (qui serait avril à septembre 2026 en comptant depuis la date
+    # mockée) — cette assertion négative est le cœur du test.
+    assert "avril" not in result["reply"].lower()
+    assert "septembre" not in result["reply"].lower()
+    assert "3 bulletins" in result["reply"] or "3 mois" in result["reply"]
+
+
 def test_system_prompt_discourages_the_rag_tool_for_general_knowledge_questions(
     monkeypatch, test_engine
 ):

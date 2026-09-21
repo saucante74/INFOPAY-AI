@@ -70,7 +70,12 @@ _query_analytics.__doc__ = f"""Calcule une valeur EXACTE (somme, moyenne, min, m
         derniers_n_mois: nombre de mois les plus récents à considérer.
             Ignoré dès que date_debut ou date_fin est fourni. Omettre si tu
             fournis une date, ou pour utiliser tout l'historique disponible
-            si aucune date ni ce paramètre n'est fourni.
+            si aucune date ni ce paramètre n'est fourni. Sélectionne les N
+            BULLETINS les plus récents EN BASE (par nombre de lignes), PAS
+            une fenêtre calendaire de N mois calculée depuis la date du
+            jour : si moins de N bulletins existent au total, le résultat
+            porte sur tous les bulletins disponibles, jamais sur une plage
+            calendaire théorique de N mois que personne n'a calculée.
         date_debut: borne de début de période, format 'MM/YYYY'. Calcule
             toi-même cette valeur à partir de la formulation de la question
             et de ta connaissance de la date actuelle — ne demande jamais
@@ -98,6 +103,12 @@ _query_analytics.__doc__ = f"""Calcule une valeur EXACTE (somme, moyenne, min, m
     Ne la confonds JAMAIS avec la période totale des bulletins importés
     donnée en contexte dans le prompt système : celle-ci décrit tout
     l'historique disponible, pas le périmètre filtré de ce calcul précis.
+    Ne construis JAMAIS toi-même une plage calendaire de N mois complets
+    (ex: "avril à septembre" pour une demande "6 derniers mois") à partir
+    de derniers_n_mois et de la date du jour : rapporte UNIQUEMENT ce que
+    dit periode, telle quelle. Si periode montre moins de mois que
+    derniers_n_mois demandé, dis-le explicitement à l'utilisateur plutôt
+    que de laisser croire que le calcul couvre la pleine plage demandée.
     """
 # "query_analytics" passé explicitement : `tool()` nomme sinon l'outil
 # d'après `__name__` de la fonction enveloppée ("_query_analytics"), ce qui
