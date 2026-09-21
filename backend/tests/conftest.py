@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
+import app.services.analytics as analytics_mod
 from app.auth.login_rate_limit import login_rate_limit
 from app.auth.security import AuthSettings, get_auth_settings, require_auth
 from app.db import get_session
@@ -177,7 +178,10 @@ def test_engine():
 
 
 def _override_business_dependencies(
-    test_engine, fake_extractor: Extractor, fake_vector_store: VectorStore
+    test_engine,
+    fake_extractor: Extractor,
+    fake_vector_store: VectorStore,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def _session_override() -> Iterator[Session]:
         with Session(test_engine) as session:
@@ -186,13 +190,25 @@ def _override_business_dependencies(
     app.dependency_overrides[get_session] = _session_override
     app.dependency_overrides[get_extractor] = lambda: fake_extractor
     app.dependency_overrides[get_vector_store] = lambda: fake_vector_store
+    # analytics.py reads via its own module-level `engine`, not through
+    # `get_session` (see tests/unit/test_analytics.py) — the chat graph
+    # now also queries it on every turn (the real available bulletin
+    # period injected into the system prompt, see app/agent/graph.py), so
+    # any fixture that can run a real chat turn must redirect it too,
+    # never the real `backend/data/infopay.db`.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
 
 
 @pytest.fixture
-def _overridden_app(test_engine, fake_extractor: Extractor, fake_vector_store: VectorStore):
+def _overridden_app(
+    test_engine,
+    fake_extractor: Extractor,
+    fake_vector_store: VectorStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
     """The app with auth and rate limiting bypassed: business tests stay
     about business behaviour. Both are exercised for real by `auth_client`."""
-    _override_business_dependencies(test_engine, fake_extractor, fake_vector_store)
+    _override_business_dependencies(test_engine, fake_extractor, fake_vector_store, monkeypatch)
     app.dependency_overrides[require_auth] = lambda: TEST_USERNAME
     app.dependency_overrides[upload_rate_limit] = lambda: None
     app.dependency_overrides[chat_rate_limit] = lambda: None
@@ -253,10 +269,11 @@ def auth_client(
     fake_extractor: Extractor,
     fake_vector_store: VectorStore,
     auth_settings: AuthSettings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[TestClient]:
     """Real `require_auth` and real rate limiters; only the settings (which
     would otherwise come from the environment) are substituted."""
-    _override_business_dependencies(test_engine, fake_extractor, fake_vector_store)
+    _override_business_dependencies(test_engine, fake_extractor, fake_vector_store, monkeypatch)
     app.dependency_overrides[get_auth_settings] = lambda: auth_settings
     # The limiters are module-level singletons: reset so no count leaks
     # between tests.

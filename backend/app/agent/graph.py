@@ -24,6 +24,7 @@ explicable :
   au modèle, qui reformule alors une réponse finale en langage naturel.
 """
 import json
+from datetime import date
 from typing import Annotated, TypedDict, cast
 
 from langchain_anthropic import ChatAnthropic
@@ -33,6 +34,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from app.agent.tools import TOOLS
+from app.services.analytics import get_available_period
 
 _SEARCH_TOOL_NAME = "search_payslip_knowledge_tool"
 
@@ -42,8 +44,8 @@ class ChatSource(TypedDict):
     d'où vient l'extrait, et l'extrait de texte lui-même. Affichage
     structuré côté frontend, indépendant de ce que le LLM choisit d'écrire
     dans le texte de sa réponse (qui reste par ailleurs instruit de citer
-    sa source, voir SYSTEM_PROMPT — les deux ne sont pas redondants : l'un
-    est fiable mécaniquement, l'autre ne l'est pas)."""
+    sa source, voir _build_system_prompt() — les deux ne sont pas
+    redondants : l'un est fiable mécaniquement, l'autre ne l'est pas)."""
 
     mois_annee: str
     extrait: str
@@ -63,27 +65,142 @@ class ChatResult(TypedDict):
 
 CHAT_MODEL = "claude-sonnet-4-6"
 
-SYSTEM_PROMPT = SystemMessage(
-    content=(
-        "Tu es l'assistant InfoPay AI, spécialisé dans l'analyse de bulletins "
-        "de paie français. Tu as deux outils : query_analytics pour tout "
-        "calcul chiffré exact (sommes, moyennes, périodes), et "
-        "search_payslip_knowledge_tool pour expliquer une notion ou une "
-        "ligne de paie. Ne calcule JAMAIS un total ou une moyenne toi-même : "
-        "utilise systématiquement query_analytics pour cela. "
-        "Quand search_payslip_knowledge_tool renvoie un extraits_trouves "
-        "vide, cela signifie qu'aucune information pertinente n'a été "
-        "trouvée dans les bulletins importés : dis-le honnêtement à "
-        "l'utilisateur (par exemple « Je n'ai trouvé aucune information à "
-        "ce sujet dans vos bulletins importés. »), n'essaie JAMAIS de "
-        "construire une explication à partir d'un extrait non pertinent. "
-        "Quand search_payslip_knowledge_tool renvoie des extraits, cite "
-        "systématiquement leur source dans ta réponse en utilisant le champ "
-        "mois_annee de chaque extrait (par exemple « D'après votre bulletin "
-        "de mars 2026 : ... »). Réponds toujours en français, de façon "
-        "claire et concise."
+# Troncature simple par nombre de messages, pas par budget de tokens : ce
+# projet reste un prototype avec des conversations courtes (quelques
+# échanges par session de chat), donc borner le coût/la latence n'exige
+# pas la complexité d'un vrai compteur de tokens (tokenizer, taille
+# variable des tool_calls et de leurs résultats, etc.) — hors de
+# proportion avec l'usage réel. 20 messages = 10 échanges user/assistant :
+# largement assez pour qu'un suivi ("et pour février ?") reste compris,
+# tout en bornant la taille envoyée à l'API Anthropic à chaque appel si
+# une conversation s'éternise. Les N derniers plutôt que les N premiers :
+# le contexte le plus récent est presque toujours le plus pertinent pour
+# une question de suivi. À revoir si des conversations nettement plus
+# longues deviennent courantes en usage réel.
+MAX_HISTORY_MESSAGES = 20
+
+
+def _today() -> date:
+    """Enveloppe `date.today()` dans une fonction du module, pour pouvoir
+    la monkeypatcher directement dans les tests (`graph_mod._today`) —
+    `datetime.date.today` lui-même, type immuable implémenté en C, n'est
+    pas patchable proprement avec `monkeypatch.setattr`."""
+    return date.today()
+
+
+def _build_system_prompt() -> SystemMessage:
+    """Reconstruit le prompt système à CHAQUE appel du nœud "agent" (pas un
+    `SystemMessage` figé une fois pour toutes au chargement du module) :
+    la date du jour et la période des bulletins réellement importés
+    changent avec le temps, et le LLM ne doit jamais les deviner depuis sa
+    mémoire d'entraînement — c'est exactement le bug que ce mécanisme
+    corrige (une question sans année précisée amenait le LLM à halluciner
+    une année par défaut plausible mais fausse)."""
+    today_str = _today().strftime("%d/%m/%Y")
+    period = get_available_period()
+    period_str = (
+        "Aucun bulletin de paie n'a encore été importé."
+        if period is None
+        else (
+            f"Les bulletins actuellement importés couvrent la période de "
+            f"{period['premier_mois']} à {period['dernier_mois']} "
+            f"({period['nombre_bulletins']} bulletin(s))."
+        )
     )
-)
+
+    return SystemMessage(
+        content=(
+            "Tu es l'assistant InfoPay AI, spécialisé dans l'analyse de bulletins "
+            "de paie français. "
+            f"Nous sommes aujourd'hui le {today_str}. {period_str} "
+            "Tu as deux outils : query_analytics pour tout calcul chiffré exact "
+            "(sommes, moyennes, périodes), et search_payslip_knowledge_tool pour "
+            "expliquer une notion ou une ligne de paie à partir du contenu réel "
+            "des bulletins importés. Ne calcule JAMAIS un total ou une moyenne "
+            "toi-même : utilise systématiquement query_analytics pour cela. "
+            "Quand tu choisis le champ à passer à query_analytics, ne te fie JAMAIS "
+            "à une simple ressemblance entre le terme de l'utilisateur et le nom "
+            "d'un champ : la description de chaque champ, dans la docstring de "
+            "query_analytics, explique ce qu'il couvre réellement — sers-t'en pour "
+            "juger si la correspondance est une identité évidente (par exemple "
+            "« brut » -> salaire_brut) ou non (par exemple « cotisations sociales », "
+            "« charges », « net » ou « salaire » employés seuls, qui peuvent chacun "
+            "correspondre à plusieurs champs distincts). Cette règle ne se limite "
+            "PAS à ces quatre exemples : elle vaut pour tout terme, y compris une "
+            "formulation que tu rencontres ici pour la première fois. Face à une "
+            "correspondance qui n'est pas une identité évidente, ne choisis JAMAIS "
+            "un champ en silence comme si c'était la seule lecture possible : soit "
+            "tu demandes une clarification avant de calculer, soit tu réponds en "
+            "indiquant explicitement quelle interprétation tu as retenue et quelle "
+            "alternative tu as écartée (par exemple « J'ai compté les cotisations "
+            "salariales, c'est-à-dire la part que vous payez directement ; si vous "
+            "vouliez y inclure la part employeur, précisez-le »). "
+            "Quand tu restitues le résultat de query_analytics, cite TOUJOURS la "
+            "période de ce calcul telle qu'indiquée par le champ periode de ce "
+            "résultat (par exemple « 6 mois (11/2024 à 03/2026) ») — ne la "
+            "confonds JAMAIS avec la période totale des bulletins importés "
+            "indiquée plus haut dans ce message, qui décrit tout l'historique "
+            "disponible et NE décrit PAS le périmètre d'un calcul déjà filtré "
+            "(par derniers_n_mois, date_debut ou date_fin) : ces deux périodes "
+            "peuvent être différentes, et seule celle du champ periode du "
+            "résultat décrit ce que ce calcul a réellement mesuré. "
+            "Ne construis JAMAIS toi-même une plage calendaire de N mois complets "
+            "(par exemple « avril à septembre » ou « janvier à juin ») pour "
+            "décrire un résultat de query_analytics, que ce soit à partir de "
+            "derniers_n_mois et de la date du jour, ou de toute autre déduction : "
+            "derniers_n_mois sélectionne les N bulletins les plus RÉCENTS EN BASE, PAS une "
+            "fenêtre calendaire de N mois calculée depuis aujourd'hui — la seule "
+            "période à mentionner reste celle du champ periode réellement renvoyé "
+            "par l'outil, rapportée telle quelle. Si le nombre de bulletins "
+            "disponibles pour la période demandée est inférieur à derniers_n_mois "
+            "(par exemple une demande sur « les 6 derniers mois » alors que periode "
+            "indique seulement 3 mois), dis-le EXPLICITEMENT à l'utilisateur (par "
+            "exemple « vous avez demandé 6 mois, mais seuls 3 bulletins sont "
+            "disponibles au total, couvrant janvier à mars 2026 ») plutôt que de "
+            "laisser croire que le calcul porte sur 6 mois complets. "
+            "N'invente JAMAIS d'année ou de date par défaut : si une question ne "
+            "précise pas d'année (par exemple « les cotisations de février et "
+            "mars »), base-toi sur la date du jour et sur la période des "
+            "bulletins importés indiquées ci-dessus pour déterminer l'année la "
+            "plus probable, ou pour demander une clarification qui porte sur "
+            "les VRAIES années disponibles dans les bulletins importés — jamais "
+            "sur une année supposée depuis ta mémoire d'entraînement. "
+            "N'utilise PAS search_payslip_knowledge_tool pour une question de "
+            "culture générale, une définition théorique ou une question de "
+            "droit du travail sans lien avec le contenu réel d'un bulletin "
+            "importé (par exemple « quelle différence entre salaire moyen et "
+            "salaire médian ? ») : réponds directement avec tes connaissances "
+            "générales, sans chercher dans les documents. Réserve ce tool aux "
+            "questions qui portent explicitement sur le contenu d'un bulletin "
+            "de l'utilisateur (une ligne, un montant, un terme qui y figure). "
+            "Quand search_payslip_knowledge_tool renvoie un extraits_trouves "
+            "vide, cela signifie qu'aucune information pertinente n'a été "
+            "trouvée dans les bulletins importés : dis-le honnêtement à "
+            "l'utilisateur (par exemple « Je n'ai trouvé aucune information à "
+            "ce sujet dans vos bulletins importés. »), n'essaie JAMAIS de "
+            "construire une explication à partir d'un extrait non pertinent. "
+            "Quand search_payslip_knowledge_tool renvoie des extraits, cite "
+            "systématiquement leur source dans ta réponse en utilisant le champ "
+            "mois_annee de chaque extrait (par exemple « D'après votre bulletin "
+            "de mars 2026 : ... »). "
+            "Réponds toujours en texte brut, SANS AUCUNE syntaxe Markdown (pas "
+            "de **gras**, pas de # titres, pas de listes à tirets ou "
+            "numérotées, pas de tableaux) : l'interface affiche ta réponse "
+            "telle quelle, sans interprétation du Markdown. Cette règle "
+            "s'applique MÊME SI l'utilisateur demande explicitement une liste, "
+            "des puces ou un tableau : reformule toujours sa demande en texte "
+            "brut plutôt que de t'y conformer littéralement. Si tu dois "
+            "énumérer plusieurs éléments (des cotisations, des étapes, une "
+            "comparaison, des conseils), ne mets JAMAIS un élément par ligne "
+            "précédé d'un tiret ou d'un numéro : rédige des phrases complètes, "
+            "ou des paragraphes courts séparés par des sauts de ligne, chacun "
+            "introduit par son libellé suivi de deux-points plutôt que d'un "
+            "tiret ou d'un numéro (par exemple « Salaire brut : 3000 euros. » "
+            "plutôt que « - Salaire brut : 3000 euros » ou « 1. Salaire brut : "
+            "3000 euros »). Réponds toujours en français, de façon claire et "
+            "concise."
+        )
+    )
 
 
 class AgentState(TypedDict):
@@ -94,7 +211,7 @@ _llm = ChatAnthropic(model=CHAT_MODEL, temperature=0).bind_tools(TOOLS)
 
 
 def _call_model(state: AgentState) -> AgentState:
-    messages = [SYSTEM_PROMPT, *state["messages"]]
+    messages = [_build_system_prompt(), *state["messages"]]
     response = _llm.invoke(messages)
     return {"messages": [cast(AnyMessage, response)]}
 
@@ -143,10 +260,19 @@ def run_chat(user_message: str, history: list[AnyMessage] | None = None) -> Chat
     """Point d'entrée appelé par le routeur FastAPI /api/chat."""
     from langchain_core.messages import HumanMessage
 
-    messages = (history or []) + [HumanMessage(content=user_message)]
+    truncated_history = (history or [])[-MAX_HISTORY_MESSAGES:]
+    messages = truncated_history + [HumanMessage(content=user_message)]
     result = agent_graph.invoke({"messages": messages})
     final_message = result["messages"][-1]
     # BaseMessage.content est `str | list[...]` ; nos réponses finales, sans
     # tool_call, sont toujours du texte.
     reply = cast(str, final_message.content)
-    return {"reply": reply, "sources": _extract_sources(result["messages"])}
+    # _extract_sources ne doit regarder que les messages produits PENDANT
+    # ce tour (à partir de l'index len(messages), donc après le dernier
+    # HumanMessage envoyé) — pas tout `result["messages"]`, qui contient
+    # aussi l'historique rejoué. Sans cette coupure, une réponse RAG
+    # produite lors d'un tour précédent réapparaîtrait comme "source" du
+    # tour actuel à chaque appel suivant, tant qu'elle reste dans la
+    # fenêtre de troncature.
+    new_messages = result["messages"][len(messages) :]
+    return {"reply": reply, "sources": _extract_sources(new_messages)}

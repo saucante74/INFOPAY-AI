@@ -100,3 +100,33 @@ def test_build_hits_accepts_a_custom_threshold():
     assert _build_hits(documents, metadatas, distances, threshold=1.0) == [
         {"text": "texte", "mois_annee": "01/2025"}
     ]
+
+
+def test_similarity_threshold_was_tightened_from_the_previous_permissive_value():
+    # Verrou explicite : 1.5 (rapport précédent) laissait passer
+    # virtuellement tout ce qui contenait "salaire", pertinent ou non (voir
+    # RAPPORT.md). Ce test échoue si un futur changement relâche le seuil
+    # au-delà de la valeur mesurée dans cette tâche, sans passer par la
+    # même méthode de mesure empirique.
+    assert SIMILARITY_DISTANCE_THRESHOLD == 1.1
+
+
+def test_build_hits_at_the_current_threshold_filters_the_bug_report_false_positive():
+    """Verrouille le cas précis du bug rapporté, avec les distances
+    mesurées empiriquement contre un corpus réaliste de bulletins (script
+    de mesure et méthodologie complète dans RAPPORT.md) : la question
+    hors-sujet "quelle différence entre salaire moyen et salaire médian ?"
+    (distance mesurée : 1.133) ne doit plus passer le seuil actuel, alors
+    qu'une question pertinente reformulée dans le même registre lexical
+    (distance mesurée : 0.925, la moins bonne des 6 paraphrases testées)
+    doit toujours passer."""
+    documents = [
+        "extrait pertinent (paraphrase de la CSG)",
+        "extrait hors-sujet (salaire moyen vs salaire médian)",
+    ]
+    metadatas = [{"mois_annee": "03/2026"}, {"mois_annee": "04/2026"}]
+    distances = [0.925, 1.133]
+
+    hits = _build_hits(documents, metadatas, distances)
+
+    assert hits == [{"text": documents[0], "mois_annee": "03/2026"}]

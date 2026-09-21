@@ -135,10 +135,32 @@ export interface components {
              */
             file: string;
         };
+        /**
+         * ChatHistoryMessage
+         * @description Un message déjà échangé dans la conversation, tel que le frontend
+         *     le garde (voir ChatPanel.tsx's `messages` state) — rôle + contenu
+         *     texte seulement. Pas de tool_calls/sources : rejouer le raisonnement
+         *     interne d'un tour précédent n'apporte rien au LLM, seul le texte
+         *     échangé compte pour comprendre une question de suivi.
+         */
+        ChatHistoryMessage: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: string;
+        };
         /** ChatRequest */
         ChatRequest: {
             /** Message */
             message: string;
+            /**
+             * History
+             * @default []
+             */
+            history: components["schemas"]["ChatHistoryMessage"][];
         };
         /** ChatResponse */
         ChatResponse: {
@@ -153,8 +175,8 @@ export interface components {
          *     d'où vient l'extrait, et l'extrait de texte lui-même. Affichage
          *     structuré côté frontend, indépendant de ce que le LLM choisit d'écrire
          *     dans le texte de sa réponse (qui reste par ailleurs instruit de citer
-         *     sa source, voir SYSTEM_PROMPT — les deux ne sont pas redondants : l'un
-         *     est fiable mécaniquement, l'autre ne l'est pas).
+         *     sa source, voir _build_system_prompt() — les deux ne sont pas
+         *     redondants : l'un est fiable mécaniquement, l'autre ne l'est pas).
          */
         ChatSource: {
             /** Mois Annee */

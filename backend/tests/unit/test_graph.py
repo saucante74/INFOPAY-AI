@@ -19,8 +19,9 @@ LangGraph à la main.
 from __future__ import annotations
 
 import json
+from datetime import date
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from sqlmodel import Session
 
 import app.agent.graph as graph_mod
@@ -42,7 +43,30 @@ class _FakeLLM:
         return next(self._responses)
 
 
-def test_agent_answers_directly_when_no_tool_call_is_needed(monkeypatch):
+class _CapturingLLM:
+    """Comme `_FakeLLM`, mais garde aussi une copie des `messages` reçus à
+    chaque appel — nécessaire pour inspecter le SystemMessage ou
+    l'historique effectivement envoyés au LLM, pas seulement la réponse
+    finale. `self.calls` est une liste de listes de messages, une par
+    appel à `.invoke()`, dans l'ordre."""
+
+    def __init__(self, responses: list[AIMessage]) -> None:
+        self._responses = iter(responses)
+        self.call_count = 0
+        self.calls: list[list] = []
+
+    def invoke(self, messages):
+        self.call_count += 1
+        self.calls.append(messages)
+        return next(self._responses)
+
+
+def test_agent_answers_directly_when_no_tool_call_is_needed(monkeypatch, test_engine):
+    # _build_system_prompt() interroge désormais analytics.get_available_period()
+    # à chaque appel du nœud "agent" (voir graph.py) : même ce test, qui ne
+    # passe par aucun tool, doit rediriger le moteur analytics vers la base
+    # en mémoire pour ne jamais toucher backend/data/infopay.db.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
     fake_llm = _FakeLLM([AIMessage(content="Bonjour, comment puis-je vous aider ?")])
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
 
@@ -97,6 +121,74 @@ def test_agent_calls_analytics_tool_then_answers(monkeypatch, test_engine):
     # 2 appels : la décision d'appeler l'outil, puis la reformulation après
     # que ToolNode a exécuté query_analytics et renvoyé son résultat.
     assert fake_llm.call_count == 2
+
+
+def test_agent_graph_actually_executes_query_analytics_via_the_real_tool_node(
+    monkeypatch, test_engine
+):
+    # Descend un niveau sous test_agent_calls_analytics_tool_then_answers
+    # ci-dessus : celui-ci ne vérifie que la réponse finale scriptée par le
+    # faux LLM, qui ne dépend pas de ce que ToolNode a réellement produit —
+    # un tool mal nommé (mismatch entre le nom du tool_call et le nom réel
+    # de l'objet BaseTool) produit un ToolMessage d'erreur ("... is not a
+    # valid tool ...") que le graphe absorbe silencieusement, puisqu'il
+    # boucle "tools" -> "agent" quoi qu'il arrive. Ce cas concret s'est
+    # produit pendant le développement de ce mécanisme (voir RAPPORT.md,
+    # section diagnostic) : tools.py construit query_analytics via
+    # `tool(_query_analytics)` pour pouvoir lui assigner une docstring
+    # calculée à partir de FIELD_MAP (voir tools.py) — sans passer le nom
+    # explicitement, l'outil se retrouvait exposé sous "_query_analytics"
+    # au lieu de "query_analytics". Ce test regarde donc le ToolMessage
+    # produit par le VRAI ToolNode, pas seulement la réponse finale.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    with Session(test_engine) as session:
+        session.add(
+            Payslip(
+                mois_annee="03/2025",
+                salaire_brut=3000.0,
+                net_imposable=2400.0,
+                net_a_payer=2300.0,
+                total_cotisations_salariales=600.0,
+                total_cotisations_patronales=900.0,
+                cotisations_retraite=350.0,
+                prelevement_source=120.0,
+                raw_text="x",
+                filename="f.pdf",
+            )
+        )
+        session.commit()
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {"operation": "somme", "champ": "net_a_payer"},
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="peu importe cette réponse, seul le ToolMessage compte ici"),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.agent_graph.invoke(
+        {"messages": [HumanMessage(content="Quel est le total du net à payer ?")]}
+    )
+
+    tool_message = result["messages"][2]
+    assert isinstance(tool_message, ToolMessage)
+    assert tool_message.status == "success"
+    assert json.loads(tool_message.content) == {
+        "operation": "somme",
+        "champ": "net_a_payer",
+        "periode": "1 mois (03/2025 à 03/2025)",
+        "resultat": 2300.0,
+    }
 
 
 def _seed_multi_year(test_engine) -> None:
@@ -249,26 +341,292 @@ def test_agent_compares_two_periods_with_two_successive_tool_calls(monkeypatch, 
     assert fake_llm.call_count == 3
 
 
-def test_system_prompt_instructs_honesty_when_nothing_is_found():
+def test_system_prompt_instructs_honesty_when_nothing_is_found(monkeypatch, test_engine):
     # Le tool signale "rien trouvé" en renvoyant extraits_trouves vide
     # (voir _build_hits dans vectorstore.py) ; c'est au system prompt de
     # dire au LLM comment réagir à ce signal, puisque le tool lui-même ne
     # peut pas formuler la réponse finale à la place du LLM.
-    content = graph_mod.SYSTEM_PROMPT.content
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
     assert "extraits_trouves" in content
     assert "vide" in content
     assert "aucune information" in content.lower()
 
 
-def test_system_prompt_instructs_citing_the_source():
-    content = graph_mod.SYSTEM_PROMPT.content
+def test_system_prompt_instructs_citing_the_source(monkeypatch, test_engine):
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
     assert "mois_annee" in content
     assert "source" in content.lower()
 
 
-def test_agent_gets_empty_extraits_trouves_when_vector_store_has_no_relevant_hit(
-    monkeypatch, fake_vector_store
+def test_system_prompt_states_the_field_ambiguity_principle(monkeypatch, test_engine):
+    # Mécanisme général demandé par PROMPT.md : le prompt système doit
+    # porter une RÈGLE DE COMPORTEMENT générique (jamais choisir un champ
+    # en silence face à une correspondance non évidente), pas une liste de
+    # termes déjà résolus — donc ce test vérifie la présence de la règle et
+    # de ses mots-clés d'obligation, pas une liste fermée de synonymes.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "identité évidente" in content
+    assert "clarification" in content.lower()
+    # La règle doit explicitement se déclarer non limitée aux exemples
+    # cités (cotisations sociales / charges / net / salaire) : c'est ce qui
+    # la rend valable pour une formulation non anticipée aujourd'hui.
+    assert "tout terme" in content.lower()
+
+
+def test_system_prompt_distinguishes_calculation_periode_from_available_period(
+    monkeypatch, test_engine
 ):
+    # Bug de période rapporté : le LLM a une fois cité la période totale
+    # des bulletins importés (get_available_period(), contexte général) à
+    # la place de la période réellement couverte par UN calcul filtré (le
+    # champ periode du résultat de CET appel à query_analytics). Cette
+    # règle doit être générale (vaut pour toute réponse de calcul), donc ce
+    # test vérifie la présence de la distinction elle-même, pas un exemple
+    # chiffré particulier.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "champ periode" in content
+    assert "période totale des bulletins importés" in content
+    assert "JAMAIS" in content and "confonds" in content.lower()
+
+
+def test_system_prompt_forbids_inventing_a_calendar_window(monkeypatch, test_engine):
+    # Nouveau bug rapporté, distinct de la confusion periode/période totale
+    # ci-dessus : sur une question "6 derniers mois" avec seulement 3
+    # bulletins disponibles, le LLM a une fois répondu en citant une
+    # fenêtre calendaire de 6 mois complets ("janvier à juin") qu'aucun
+    # outil n'a calculée — derniers_n_mois sélectionne des BULLETINS (par
+    # nombre de lignes), pas un intervalle calendaire depuis aujourd'hui.
+    # Cette règle doit être générale (vaut pour toute réponse de calcul
+    # utilisant derniers_n_mois), donc ce test vérifie la présence de
+    # l'interdiction elle-même, pas un exemple chiffré particulier.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "plage calendaire" in content
+    assert "derniers_n_mois" in content
+    assert "EXPLICITEMENT" in content or "explicitement" in content.lower()
+
+
+def test_agent_reports_the_real_periode_instead_of_an_invented_calendar_window_end_to_end(
+    monkeypatch, test_engine
+):
+    # Scénario contrôlé où le nombre de bulletins disponibles (3) est
+    # inférieur à derniers_n_mois demandé (6), avec une date du jour
+    # mockée loin après ces 3 bulletins (comme dans le bug réel rapporté :
+    # 3 bulletins de 01/2026 à 03/2026, date du jour en septembre 2026).
+    # Le faux LLM script ici le comportement ATTENDU (fidèle au champ
+    # periode réel, signalant le manque de bulletins) plutôt que le
+    # comportement bogué (fenêtre calendaire inventée) : comme les autres
+    # tests "bout en bout" de ce fichier, il ne peut pas prouver que le
+    # VRAI Claude choisit ce comportement (voir RAPPORT.md pour la preuve
+    # empirique contre l'API réelle) — il vérifie que le mécanisme
+    # d'injection (periode réel du résultat, disponible pour la
+    # reformulation finale) fonctionne bout en bout via run_chat().
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    monkeypatch.setattr(graph_mod, "_today", lambda: date(2026, 9, 15))
+    with Session(test_engine) as session:
+        session.add_all(
+            [
+                Payslip(
+                    mois_annee=m,
+                    salaire_brut=3000.0,
+                    net_imposable=2400.0,
+                    net_a_payer=2300.0,
+                    total_cotisations_salariales=600.0,
+                    total_cotisations_patronales=900.0,
+                    cotisations_retraite=350.0,
+                    prelevement_source=120.0,
+                    raw_text="x",
+                    filename="f.pdf",
+                )
+                for m in ["01/2026", "02/2026", "03/2026"]
+            ]
+        )
+        session.commit()
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {
+                            "operation": "somme",
+                            "champ": "salaire_brut",
+                            "derniers_n_mois": 6,
+                        },
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(
+                content=(
+                    "Vous avez demandé les 6 derniers mois, mais seuls 3 bulletins "
+                    "sont disponibles au total, couvrant janvier à mars 2026. La "
+                    "somme sur ces 3 mois est de 9000.0 euros."
+                )
+            ),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat(
+        "Quelle est la somme de mon salaire brut sur les 6 derniers mois ?"
+    )
+
+    # La réponse reflète fidèlement les 3 bulletins réels (janvier à mars
+    # 2026), jamais une fenêtre calendaire de 6 mois complets inventée
+    # (qui serait avril à septembre 2026 en comptant depuis la date
+    # mockée) — cette assertion négative est le cœur du test.
+    assert "avril" not in result["reply"].lower()
+    assert "septembre" not in result["reply"].lower()
+    assert "3 bulletins" in result["reply"] or "3 mois" in result["reply"]
+
+
+def test_system_prompt_discourages_the_rag_tool_for_general_knowledge_questions(
+    monkeypatch, test_engine
+):
+    # Bug : "quelle différence entre salaire moyen et salaire médian ?"
+    # déclenchait le tool RAG et remontait des chunks hors sujet, cités
+    # comme "Sources" alors qu'ils n'avaient pas servi à la réponse. Le
+    # seuil resserré (voir test_vectorstore.py) n'est qu'un filet de
+    # sécurité après coup — la vraie prévention est de décourager l'appel
+    # du tool sur ce type de question dès le prompt système.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "culture générale" in content.lower() or "sans lien avec le contenu réel" in content
+    assert "salaire moyen" in content and "salaire médian" in content
+
+
+def test_system_prompt_forbids_markdown_formatting(monkeypatch, test_engine):
+    # ChatPanel.tsx affiche le texte de la réponse tel quel, sans rendu
+    # Markdown : les symboles ** ou # apparaîtraient littéralement.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "markdown" in content.lower()
+    assert "**" in content  # l'exemple de syntaxe à éviter, cité tel quel
+    assert "texte brut" in content.lower()
+
+
+def test_system_prompt_reflects_the_real_mocked_date(monkeypatch, test_engine):
+    # La date du jour ne doit jamais venir de la mémoire d'entraînement du
+    # LLM : on mocke la source (_today), pas seulement le formatage, pour
+    # vérifier le mécanisme d'injection lui-même.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    monkeypatch.setattr(graph_mod, "_today", lambda: date(2026, 3, 15))
+
+    content = graph_mod._build_system_prompt().content
+
+    assert "15/03/2026" in content
+
+
+def test_system_prompt_states_no_payslip_imported_when_the_database_is_empty(
+    monkeypatch, test_engine
+):
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "Aucun bulletin de paie n'a encore été importé." in content
+
+
+def test_system_prompt_states_the_real_available_period_when_payslips_exist(
+    monkeypatch, test_engine
+):
+    # Le cas précis du bug rapporté : bulletins tous en 2026, une question
+    # sans année précisée ne doit pas pouvoir faire halluciner 2025 — le
+    # prompt système doit porter la VRAIE plage disponible.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    _seed_multi_year(test_engine)
+
+    content = graph_mod._build_system_prompt().content
+
+    assert "11/2025" in content
+    assert "06/2026" in content
+    assert "3 bulletin" in content
+
+
+def test_agent_uses_the_real_available_period_end_to_end_for_a_vague_period_question(
+    monkeypatch, test_engine
+):
+    # Bout en bout : seuls des bulletins 2026 en base, une question sans
+    # année ("février et mars") — le LLM factice ici simule la bonne
+    # réaction (utiliser 2026, la seule année réellement présente) plutôt
+    # que le comportement bogué (halluciner 2025). Ce test ne peut pas
+    # vérifier que le VRAI Claude ferait ce choix ; il vérifie que le
+    # mécanisme d'injection fonctionne bout en bout via run_chat().
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    with Session(test_engine) as session:
+        session.add_all(
+            [
+                Payslip(
+                    mois_annee="02/2026",
+                    salaire_brut=3000.0,
+                    net_imposable=2400.0,
+                    net_a_payer=2300.0,
+                    total_cotisations_salariales=600.0,
+                    total_cotisations_patronales=900.0,
+                    cotisations_retraite=350.0,
+                    prelevement_source=100.0,
+                    raw_text="x",
+                    filename="f1.pdf",
+                ),
+                Payslip(
+                    mois_annee="03/2026",
+                    salaire_brut=3000.0,
+                    net_imposable=2400.0,
+                    net_a_payer=2300.0,
+                    total_cotisations_salariales=600.0,
+                    total_cotisations_patronales=900.0,
+                    cotisations_retraite=350.0,
+                    prelevement_source=110.0,
+                    raw_text="x",
+                    filename="f2.pdf",
+                ),
+            ]
+        )
+        session.commit()
+
+    fake_llm = _CapturingLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {
+                            "operation": "somme",
+                            "champ": "cotisations_retraite",
+                            "date_debut": "02/2026",
+                            "date_fin": "03/2026",
+                        },
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="Le total des cotisations retraite est de 210.0 euros."),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("Quelles sont mes cotisations retraite pour février et mars ?")
+
+    assert result["reply"] == "Le total des cotisations retraite est de 210.0 euros."
+    # Le prompt système envoyé au LLM (1er message de chaque appel) porte
+    # bien la vraie plage disponible (2026), pas une année inventée.
+    system_content = fake_llm.calls[0][0].content
+    assert "02/2026" in system_content
+    assert "03/2026" in system_content
+
+
+def test_agent_gets_empty_extraits_trouves_when_vector_store_has_no_relevant_hit(
+    monkeypatch, test_engine, fake_vector_store
+):
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
     # fake_vector_store.hits vide simule ce que ChromaVectorStore.search()
     # renvoie réellement quand aucun résultat n'a été trouvé, ou quand tous
     # les résultats sont sous le seuil de similarité (_build_hits) — les
@@ -306,6 +664,137 @@ def test_agent_gets_empty_extraits_trouves_when_vector_store_has_no_relevant_hit
     # pas de source à afficher, jamais une liste vide.
     assert result["sources"] is None
     assert fake_llm.call_count == 2
+
+
+def test_run_chat_sends_the_history_before_the_new_message_in_order(monkeypatch, test_engine):
+    # Une question de suivi ("et pour février ?") ne peut être comprise
+    # que si le LLM reçoit bien les échanges précédents, dans l'ordre,
+    # avant le nouveau message.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    fake_llm = _CapturingLLM(
+        [AIMessage(content="En février, le total est de 100.0 euros.")]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+    history = [
+        HumanMessage(content="Quel est le total de mes cotisations retraite en janvier ?"),
+        AIMessage(content="En janvier, le total est de 90.0 euros."),
+    ]
+
+    result = graph_mod.run_chat("Et pour février ?", history=history)
+
+    assert result["reply"] == "En février, le total est de 100.0 euros."
+    sent_messages = fake_llm.calls[0]
+    # [0] = le prompt système (reconstruit à chaque appel, voir
+    # _build_system_prompt), [1:] = historique + nouveau message, dans
+    # l'ordre exact où ils ont été fournis.
+    assert [m.content for m in sent_messages[1:]] == [
+        "Quel est le total de mes cotisations retraite en janvier ?",
+        "En janvier, le total est de 90.0 euros.",
+        "Et pour février ?",
+    ]
+
+
+def test_run_chat_truncates_history_to_the_last_n_messages(monkeypatch, test_engine):
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    fake_llm = _CapturingLLM([AIMessage(content="Réponse.")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+    # Deux fois plus de messages que la limite : seuls les N derniers
+    # doivent être envoyés au LLM, pas les plus anciens.
+    history = [
+        HumanMessage(content=f"message historique {i}")
+        for i in range(graph_mod.MAX_HISTORY_MESSAGES * 2)
+    ]
+
+    graph_mod.run_chat("Nouvelle question", history=history)
+
+    sent_messages = fake_llm.calls[0]
+    # [0] = system prompt, le reste = historique tronqué + nouveau message.
+    history_and_new_message = sent_messages[1:]
+    assert len(history_and_new_message) == graph_mod.MAX_HISTORY_MESSAGES + 1
+    # Les DERNIERS messages de l'historique sont gardés, pas les premiers.
+    expected_oldest_kept_index = len(history) - graph_mod.MAX_HISTORY_MESSAGES
+    assert history_and_new_message[0].content == f"message historique {expected_oldest_kept_index}"
+    assert history_and_new_message[-2].content == f"message historique {len(history) - 1}"
+    assert history_and_new_message[-1].content == "Nouvelle question"
+
+
+def test_run_chat_without_history_behaves_like_before(monkeypatch, test_engine):
+    # Rétrocompatibilité : `history` par défaut à None (voir la signature
+    # de run_chat), donc un appelant qui ne le fournit pas — comme avant
+    # cette tâche — continue de fonctionner exactement pareil.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    fake_llm = _CapturingLLM([AIMessage(content="Réponse sans historique.")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("Une question isolée")
+
+    assert result["reply"] == "Réponse sans historique."
+    sent_messages = fake_llm.calls[0]
+    assert [m.content for m in sent_messages[1:]] == ["Une question isolée"]
+
+
+def test_run_chat_does_not_leak_a_previous_turns_rag_sources_into_the_current_one(
+    monkeypatch, test_engine
+):
+    # `routers/chat.py`'s ChatHistoryMessage n'envoie jamais de ToolMessage
+    # brut (rôle/contenu texte seulement), donc ce scénario précis ne peut
+    # pas se produire via le routeur réel aujourd'hui — mais run_chat()
+    # accepte `history: list[AnyMessage]` au sens large, et son contrat ne
+    # doit pas dépendre de la discipline d'un appelant particulier. Ce test
+    # construit directement un historique contenant le ToolMessage d'un
+    # tour RAG précédent (comme le ferait un futur appelant, ou un
+    # checkpointer LangGraph persistant), pour verrouiller que
+    # run_chat() ne le confond jamais avec une source du tour actuel.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    history = [
+        HumanMessage(content="C'est quoi la CSG ?"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "search_payslip_knowledge_tool",
+                    "args": {"query": "C'est quoi la CSG ?"},
+                    "id": "call_previous",
+                    "type": "tool_call",
+                }
+            ],
+        ),
+        _search_tool_message(
+            {"text": "La CSG déductible est assise sur le salaire brut.", "mois_annee": "03/2025"},
+            tool_call_id="call_previous",
+        ),
+        AIMessage(content="D'après votre bulletin de mars 2025 : la CSG est déductible."),
+    ]
+
+    fake_llm = _FakeLLM([AIMessage(content="Le total du net à payer est de 2300.0 euros.")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.run_chat("Et le total du net à payer ?", history=history)
+
+    # Cette question n'appelle pas le tool RAG (une seule réponse directe
+    # dans fake_llm) : aucune source à citer pour CE tour, même si
+    # l'historique rejoué en contient une d'un tour précédent.
+    assert result["sources"] is None
+
+
+def test_extract_sources_ignores_messages_from_before_the_cutoff_index():
+    # Teste _extract_sources directement avec le même scénario, au niveau
+    # le plus bas : une liste où seul le message APRÈS l'index de coupure
+    # doit compter. run_chat() calcule ce sous-ensemble via
+    # result["messages"][len(messages):] ; ici on le construit à la main
+    # pour isoler la logique de filtrage de celle du graphe.
+    previous_turn_tool_message = _search_tool_message(
+        {"text": "extrait d'un tour précédent", "mois_annee": "01/2025"}
+    )
+    current_turn_messages = [AIMessage(content="Réponse du tour actuel, sans tool call.")]
+
+    # Liste complète (comme result["messages"]) : contient l'ancien ToolMessage.
+    assert graph_mod._extract_sources([previous_turn_tool_message, *current_turn_messages]) == [
+        {"mois_annee": "01/2025", "extrait": "extrait d'un tour précédent"}
+    ]
+    # Sous-ensemble "ce tour seulement" (ce que run_chat() passe réellement) :
+    # aucune source, cohérent avec l'absence de tool call ce tour-ci.
+    assert graph_mod._extract_sources(current_turn_messages) is None
 
 
 def _search_tool_message(*hits: dict, tool_call_id: str = "call_1") -> ToolMessage:

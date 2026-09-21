@@ -103,11 +103,26 @@ file itself, so editing a workflow re-runs it).
 
 Never use `source venv/bin/activate && <command>`. Always call the venv's 
 binaries directly by relative path from the project root instead:
-- `backend/venv/bin/mypy --strict backend/app/`
+- `backend/venv/bin/mypy --strict --config-file backend/mypy.ini backend/app/`
 - `backend/venv/bin/pytest backend/tests/`
 - `backend/venv/bin/python3 ...`
 This avoids a `source` command that Claude Code's permission system 
 cannot statically analyze and will always flag for confirmation.
+
+**The mypy invocation above needs `--config-file backend/mypy.ini`
+explicitly.** mypy only auto-discovers `mypy.ini`/`pyproject.toml` in the
+*current working directory* — running from the project root without `cd`
+(as this section requires) means it silently falls back to its default
+config and never loads `plugins = pydantic.mypy`, which is what makes
+`ChatAnthropic(model=...)` type-check at all (see CONVENTIONS.md, "Static
+type checking"). Without the explicit flag, `mypy --strict backend/app/`
+still runs and still reports errors, just the wrong ones — two spurious
+`Unexpected keyword argument "model"` errors on `ChatAnthropic(...)`
+call sites, unrelated to whatever was actually being changed. CI is
+unaffected (`.github/workflows/mypy.yml` sets `working-directory: backend`
+before running, so its plain `mypy --strict app/` finds the config
+correctly) — this is a local-invocation footgun, not a real regression in
+the code.
 
 ## Authentication and rate limiting
 

@@ -101,7 +101,7 @@ describe("uploadPayslip", () => {
 });
 
 describe("sendChatMessage", () => {
-  it("POSTs the message and returns the reply with no sources", async () => {
+  it("POSTs the message with no history by default, and returns the reply", async () => {
     mockPost.mockResolvedValueOnce({
       data: { reply: "La CSG est une cotisation sociale.", sources: null },
     });
@@ -110,7 +110,10 @@ describe("sendChatMessage", () => {
       reply: "La CSG est une cotisation sociale.",
       sources: null,
     });
-    expect(mockPost).toHaveBeenCalledWith("/api/chat", { message: "C'est quoi la CSG ?" });
+    expect(mockPost).toHaveBeenCalledWith("/api/chat", {
+      message: "C'est quoi la CSG ?",
+      history: [],
+    });
   });
 
   it("returns the RAG sources alongside the reply when present", async () => {
@@ -122,6 +125,23 @@ describe("sendChatMessage", () => {
     await expect(sendChatMessage("C'est quoi la CSG ?")).resolves.toEqual({
       reply: "D'après votre bulletin de mars 2025 : ...",
       sources,
+    });
+  });
+
+  it("POSTs the given history alongside the new message", async () => {
+    mockPost.mockResolvedValueOnce({
+      data: { reply: "En février, le total est de 100.0 euros.", sources: null },
+    });
+    const history = [
+      { role: "user" as const, content: "Quel est le total en janvier ?" },
+      { role: "assistant" as const, content: "En janvier, le total est de 90.0 euros." },
+    ];
+
+    await sendChatMessage("Et pour février ?", history);
+
+    expect(mockPost).toHaveBeenCalledWith("/api/chat", {
+      message: "Et pour février ?",
+      history,
     });
   });
 });
