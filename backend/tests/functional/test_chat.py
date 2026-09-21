@@ -31,6 +31,20 @@ class _FakeLLM:
         return next(self._responses)
 
 
+class _CapturingLLM(_FakeLLM):
+    """Comme `_FakeLLM`, mais garde aussi une copie des `messages` reçus à
+    chaque appel — nécessaire pour vérifier que l'historique envoyé dans le
+    corps JSON de la requête HTTP est bien transmis jusqu'au LLM."""
+
+    def __init__(self, responses: list[AIMessage]) -> None:
+        super().__init__(responses)
+        self.calls: list[list] = []
+
+    def invoke(self, messages):
+        self.calls.append(messages)
+        return super().invoke(messages)
+
+
 def test_chat_happy_path_direct_answer(client, monkeypatch):
     fake_llm = _FakeLLM([AIMessage(content="La CSG est une cotisation sociale.")])
     monkeypatch.setattr(graph_mod, "_llm", fake_llm)
@@ -116,6 +130,49 @@ def test_chat_rag_tool_called_but_nothing_relevant_found_has_no_sources(
         "reply": "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés.",
         "sources": None,
     }
+
+
+def test_chat_sends_the_provided_history_to_the_llm_in_order(client, monkeypatch):
+    fake_llm = _CapturingLLM([AIMessage(content="En février, le total est de 100.0 euros.")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Et pour février ?",
+            "history": [
+                {"role": "user", "content": "Quel est le total en janvier ?"},
+                {"role": "assistant", "content": "En janvier, le total est de 90.0 euros."},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == "En février, le total est de 100.0 euros."
+    sent_messages = fake_llm.calls[0]
+    # [0] = system prompt (reconstruit à chaque appel) ; le reste doit
+    # porter l'historique fourni dans le corps JSON, puis le nouveau
+    # message, dans cet ordre.
+    assert [m.content for m in sent_messages[1:]] == [
+        "Quel est le total en janvier ?",
+        "En janvier, le total est de 90.0 euros.",
+        "Et pour février ?",
+    ]
+
+
+def test_chat_without_a_history_field_in_the_request_body_still_works(client, monkeypatch):
+    # Rétrocompatibilité : un ancien client qui n'envoie pas encore
+    # `history` (le champ a une valeur par défaut `[]` dans ChatRequest)
+    # continue de fonctionner exactement comme avant cette tâche.
+    fake_llm = _CapturingLLM([AIMessage(content="Bonjour !")])
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    response = client.post("/api/chat", json={"message": "bonjour"})
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Bonjour !"
+    sent_messages = fake_llm.calls[0]
+    assert [m.content for m in sent_messages[1:]] == ["bonjour"]
 
 
 def test_chat_returns_500_when_the_llm_call_fails(client_no_raise, monkeypatch):

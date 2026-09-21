@@ -3,6 +3,7 @@ import axios from "axios";
 import { attachAuth } from "../auth/attachAuth";
 import type {
   ApiErrorBody,
+  ChatHistoryMessage,
   ChatResponse,
   LoginRequest,
   Payslip,
@@ -46,10 +47,21 @@ export async function deletePayslip(id: number): Promise<void> {
   await api.delete(`/api/payslips/${String(id)}`);
 }
 
-/** The reply text plus any RAG sources cited to produce it (`null` when
- * search_payslip_knowledge_tool wasn't used, or found nothing relevant). */
-export async function sendChatMessage(message: string): Promise<ChatResponse> {
-  const { data } = await api.post<ChatResponse>("/api/chat", { message });
+/**
+ * The reply text plus any RAG sources cited to produce it (`null` when
+ * search_payslip_knowledge_tool wasn't used, or found nothing relevant).
+ *
+ * `history` is every message already exchanged in this conversation
+ * (oldest first, not including `message` itself) — the backend is
+ * stateless, so the caller (`ChatPanel`, from its own `messages` state)
+ * resends it on every call for the reply to account for prior context
+ * (e.g. "and for February?").
+ */
+export async function sendChatMessage(
+  message: string,
+  history: ChatHistoryMessage[] = []
+): Promise<ChatResponse> {
+  const { data } = await api.post<ChatResponse>("/api/chat", { message, history });
   return data;
 }
 

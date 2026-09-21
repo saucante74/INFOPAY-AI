@@ -12,14 +12,125 @@ from sqlmodel import Session, select
 from app.db import engine
 from app.models.payslip import Payslip
 
-FIELD_MAP = {
-    "salaire_brut": "salaire_brut",
-    "net_imposable": "net_imposable",
-    "net_a_payer": "net_a_payer",
-    "cotisations_salariales": "total_cotisations_salariales",
-    "cotisations_patronales": "total_cotisations_patronales",
-    "cotisations_retraite": "cotisations_retraite",
-    "prelevement_source": "prelevement_source",
+
+class FieldInfo(TypedDict):
+    """Une entrée de FIELD_MAP : la colonne DataFrame réelle derrière le
+    nom exposé au LLM, et une description métier de ce que le champ
+    couvre (et ne couvre pas).
+
+    La description n'est PAS une table de correspondance "terme
+    utilisateur -> champ" (ex: ne dit jamais littéralement "cotisations
+    sociales -> cotisations_salariales") : une telle table serait fermée
+    par construction, incapable de couvrir une formulation non anticipée
+    aujourd'hui (voir RAPPORT.md, section "Mécanisme"). Elle donne plutôt
+    au LLM la même matière qu'un lecteur humain du bulletin aurait pour
+    juger LUI-MÊME si un terme y correspond clairement ou non — y compris
+    un renvoi explicite vers les champs frères avec lesquels une confusion
+    est plausible (ex: net_imposable renvoie vers net_a_payer et
+    inversement), pour qu'un terme générique ("net", "cotisations
+    sociales", "charges"...) déclenche la vigilance du LLM sans qu'aucune
+    liste de termes n'ait eu besoin d'être écrite ici. Ajouter un nouveau
+    champ à FIELD_MAP suffit à le faire apparaître dans le tool exposé au
+    LLM (voir app/agent/tools.py, qui construit sa docstring à partir de
+    ce dict) : rien d'autre à maintenir en parallèle."""
+
+    colonne: str
+    description: str
+
+
+FIELD_MAP: dict[str, FieldInfo] = {
+    "salaire_brut": {
+        "colonne": "salaire_brut",
+        "description": (
+            "Salaire brut mensuel, avant toute cotisation ou retenue. "
+            "Correspond au terme « brut » sur un bulletin de paie français, "
+            "un terme standard et univoque en général. Si l'utilisateur dit "
+            "simplement « salaire » ou « combien je gagne » SANS préciser "
+            "« brut », il désigne le plus souvent ce qu'il perçoit "
+            "réellement (voir net_a_payer), pas ce champ : ne suppose jamais "
+            "lequel des deux il vise sans indice clair dans la question."
+        ),
+    },
+    "net_imposable": {
+        "colonne": "net_imposable",
+        "description": (
+            "Net imposable : la base retenue pour le calcul de l'impôt sur "
+            "le revenu, distincte du montant réellement versé au salarié. "
+            "Un bulletin de paie porte DEUX montants « nets » différents "
+            "(celui-ci et net_a_payer) qui ne sont presque jamais égaux : le "
+            "mot « net » seul, sans précision, ne permet pas de savoir "
+            "lequel des deux l'utilisateur vise."
+        ),
+    },
+    "net_a_payer": {
+        "colonne": "net_a_payer",
+        "description": (
+            "Net à payer : le montant réellement versé au salarié, après "
+            "toutes les cotisations et retenues (y compris le prélèvement à "
+            "la source). C'est le montant qu'un utilisateur désigne le plus "
+            "souvent par « salaire » ou par « net » seul dans le langage "
+            "courant — mais voir net_imposable, qui porte aussi le mot "
+            "« net » et représente une valeur différente : sans précision, "
+            "ne choisis pas silencieusement entre les deux."
+        ),
+    },
+    "cotisations_salariales": {
+        "colonne": "total_cotisations_salariales",
+        "description": (
+            "Total des cotisations sociales retenues sur le salaire du "
+            "salarié (part salariale uniquement) — n'inclut PAS la part "
+            "payée par l'employeur (voir cotisations_patronales), ni le "
+            "prélèvement à la source, qui est une retenue distincte des "
+            "cotisations sociales (voir prelevement_source). Le terme "
+            "générique « cotisations sociales », employé sans préciser "
+            "« salariales » ou « patronales », peut désigner selon le "
+            "contexte soit cette part salariale seule (ce que le salarié "
+            "voit réellement déduit), soit l'ensemble salarié + employeur : "
+            "ce choix n'est jamais évident, ne le tranche jamais en silence."
+        ),
+    },
+    "cotisations_patronales": {
+        "colonne": "total_cotisations_patronales",
+        "description": (
+            "Total des cotisations sociales payées par l'employeur (part "
+            "patronale) : ce montant n'est jamais déduit du salaire du "
+            "salarié, il figure sur le bulletin à titre indicatif. Un terme "
+            "comme « charges », employé seul, est ambigu : il peut désigner "
+            "cette part patronale, la part salariale (cotisations_"
+            "salariales), les deux additionnées, ou même — hors du "
+            "périmètre de cet outil — le coût total employeur (salaire brut "
+            "+ cotisations patronales), qu'aucun champ ne calcule "
+            "directement aujourd'hui."
+        ),
+    },
+    "cotisations_retraite": {
+        "colonne": "cotisations_retraite",
+        "description": (
+            "Total des cotisations retraite (base + complémentaire) telles "
+            "qu'extraites du bulletin. Selon la présentation d'origine du "
+            "bulletin, la part salariale et la part patronale de la "
+            "retraite peuvent être confondues dans ce montant unique : ce "
+            "champ ne garantit donc PAS de pouvoir isoler l'une des deux si "
+            "l'utilisateur le demande explicitement (« cotisations retraite "
+            "salariales » par exemple) — signale cette limite plutôt que de "
+            "répondre comme si la distinction était garantie."
+        ),
+    },
+    "prelevement_source": {
+        "colonne": "prelevement_source",
+        "description": (
+            "Montant du prélèvement à la source (impôt sur le revenu "
+            "prélevé directement sur le salaire). Généralement "
+            "identifiable sans ambiguïté (« prélèvement à la source », "
+            "« impôt », « PAS », « impôt sur le revenu ») car c'est la "
+            "seule ligne d'imposition sur un bulletin de paie français — "
+            "mais reste bien distinct des cotisations sociales "
+            "(cotisations_salariales, cotisations_patronales, cotisations_"
+            "retraite), qui ne sont PAS de l'impôt : un terme générique "
+            "comme « prélèvements » ou « retenues » peut désigner "
+            "n'importe laquelle de ces lignes, pas spécifiquement celle-ci."
+        ),
+    },
 }
 
 Operation = Literal["somme", "moyenne", "min", "max"]
@@ -46,6 +157,17 @@ class AnalyticsError(TypedDict):
 AnalyticsResult = AnalyticsSuccess | AnalyticsError
 
 
+class AvailablePeriod(TypedDict):
+    """Bornes réelles des bulletins actuellement en base. Utilisé pour
+    injecter du contexte factuel dans le prompt système (voir
+    app/agent/graph.py) — jamais pour qu'un LLM devine une période
+    plausible à partir de sa mémoire d'entraînement."""
+
+    premier_mois: str
+    dernier_mois: str
+    nombre_bulletins: int
+
+
 def _load_dataframe() -> pd.DataFrame:
     with Session(engine) as session:
         payslips = session.exec(select(Payslip)).all()
@@ -69,6 +191,23 @@ def _parse_mois_annee(value: str) -> datetime | None:
         return datetime.strptime(value, "%m/%Y")
     except ValueError:
         return None
+
+
+def get_available_period() -> AvailablePeriod | None:
+    """Renvoie la plage de mois réellement couverte par les bulletins
+    importés, ou None si aucun bulletin n'a encore été importé. Une simple
+    lecture des bornes déjà triées par _load_dataframe() — pas un calcul
+    agrégé (somme/moyenne), donc pas soumis à la même contrainte
+    "jamais par le LLM" que run_analytics_query : c'est un fait descriptif
+    sur les données, pas une valeur dérivée qu'il faudrait interpréter."""
+    df = _load_dataframe()
+    if df.empty:
+        return None
+    return {
+        "premier_mois": df["mois_annee"].iloc[0],
+        "dernier_mois": df["mois_annee"].iloc[-1],
+        "nombre_bulletins": len(df),
+    }
 
 
 def run_analytics_query(
@@ -125,7 +264,7 @@ def run_analytics_query(
     elif derniers_n_mois:
         df = df.tail(derniers_n_mois)
 
-    column = FIELD_MAP[champ]
+    column = FIELD_MAP[champ]["colonne"]
     series = df[column]
 
     if operation == "somme":
