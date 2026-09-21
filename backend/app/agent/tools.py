@@ -3,18 +3,50 @@ from typing import Any, Optional, TypedDict, cast
 from langchain_core.tools import tool
 
 from app.dependencies import get_vector_store
-from app.services.analytics import AnalyticsResult, Operation, run_analytics_query
+from app.services.analytics import FIELD_MAP, AnalyticsResult, Operation, run_analytics_query
 
 
-@tool
-def query_analytics(
+def _build_champ_doc() -> str:
+    """Construit la liste des champs valides (et de leur description
+    métier) pour la docstring de `query_analytics` à partir de FIELD_MAP —
+    pas une liste recopiée à la main ici. Un futur champ ajouté à FIELD_MAP
+    (app/services/analytics.py) apparaît donc automatiquement dans le
+    schéma envoyé au LLM sans qu'il faille toucher ce fichier, cohérent
+    avec CONVENTIONS.md, "Agent tool parameters" : un mécanisme générique
+    plutôt qu'une liste de cas à maintenir en double."""
+    return "\n".join(
+        f"            - {champ}: {info['description']}" for champ, info in FIELD_MAP.items()
+    )
+
+
+def _query_analytics(
     operation: str,
     champ: str,
     derniers_n_mois: Optional[int] = None,
     date_debut: Optional[str] = None,
     date_fin: Optional[str] = None,
 ) -> AnalyticsResult:
-    """Calcule une valeur EXACTE (somme, moyenne, min, max) sur les bulletins
+    # `operation` reste un `str` nu : la signature de ce tool est le schéma
+    # envoyé au LLM, un Literal y changerait le contrat. run_analytics_query
+    # valide déjà les valeurs inconnues et renvoie une erreur métier.
+    #
+    # Docstring assignée après la définition (voir plus bas) : elle doit
+    # inclure le contenu de FIELD_MAP calculé à l'import, ce qu'une
+    # docstring littérale (obligatoirement une constante figée dans le
+    # code source) ne permet pas. Fonction nommée à part (préfixée `_`) et
+    # enveloppée par `tool()` plus bas plutôt que `@tool` : réassigner
+    # `query_analytics` (function -> BaseTool) sur le même nom ferait
+    # échouer `mypy --strict` (types incompatibles sur une même variable).
+    return run_analytics_query(
+        operation=cast(Operation, operation),
+        champ=champ,
+        derniers_n_mois=derniers_n_mois,
+        date_debut=date_debut,
+        date_fin=date_fin,
+    )
+
+
+_query_analytics.__doc__ = f"""Calcule une valeur EXACTE (somme, moyenne, min, max) sur les bulletins
     de paie déjà importés par l'utilisateur. Utilise CET outil dès que la
     question porte sur un total, une moyenne, une évolution chiffrée ou une
     période (ex: 'total cotisations retraite sur 4 mois', 'moyenne du net
@@ -22,9 +54,19 @@ def query_analytics(
 
     Args:
         operation: 'somme', 'moyenne', 'min' ou 'max'.
-        champ: un parmi 'salaire_brut', 'net_imposable', 'net_a_payer',
-            'cotisations_salariales', 'cotisations_patronales',
-            'cotisations_retraite', 'prelevement_source'.
+        champ: le nom technique du champ à calculer, parmi ceux listés
+            ci-dessous avec leur description métier. Une description
+            explique ce que le champ couvre RÉELLEMENT (et parfois ce qu'il
+            ne couvre pas, ou avec quel champ frère il est facile de le
+            confondre) : sers-t'en pour juger TOI-MÊME si le terme employé
+            par l'utilisateur y correspond clairement, plutôt que de te
+            fier à une ressemblance de surface avec le nom du champ. Voir
+            la consigne du prompt système sur les correspondances non
+            évidentes (« cotisations sociales », « charges », « net » ou
+            « salaire » seuls, par exemple, n'en sont pas — mais la même
+            prudence vaut pour tout terme, y compris un que tu rencontres
+            ici pour la première fois) :
+{_build_champ_doc()}
         derniers_n_mois: nombre de mois les plus récents à considérer.
             Ignoré dès que date_debut ou date_fin est fourni. Omettre si tu
             fournis une date, ou pour utiliser tout l'historique disponible
@@ -49,17 +91,19 @@ def query_analytics(
     (deux appels séparés, chacun avec son propre date_debut/date_fin), puis
     rédige toi-même la comparaison à partir des deux résultats exacts
     obtenus.
+
+    Le résultat porte un champ periode qui décrit EXACTEMENT la plage de
+    bulletins que CET appel a effectivement utilisée (ex: "6 mois (11/2024
+    à 03/2026)") — c'est la seule période à citer pour décrire ce calcul.
+    Ne la confonds JAMAIS avec la période totale des bulletins importés
+    donnée en contexte dans le prompt système : celle-ci décrit tout
+    l'historique disponible, pas le périmètre filtré de ce calcul précis.
     """
-    # `operation` reste un `str` nu : la signature de ce tool est le schéma
-    # envoyé au LLM, un Literal y changerait le contrat. run_analytics_query
-    # valide déjà les valeurs inconnues et renvoie une erreur métier.
-    return run_analytics_query(
-        operation=cast(Operation, operation),
-        champ=champ,
-        derniers_n_mois=derniers_n_mois,
-        date_debut=date_debut,
-        date_fin=date_fin,
-    )
+# "query_analytics" passé explicitement : `tool()` nomme sinon l'outil
+# d'après `__name__` de la fonction enveloppée ("_query_analytics"), ce qui
+# romprait le contrat externe (le nom du tool tel que vu par le LLM, et par
+# lequel `ToolNode` route un tool_call vers son exécution).
+query_analytics = tool("query_analytics")(_query_analytics)
 
 
 class SearchKnowledgeResult(TypedDict):

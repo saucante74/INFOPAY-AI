@@ -123,6 +123,74 @@ def test_agent_calls_analytics_tool_then_answers(monkeypatch, test_engine):
     assert fake_llm.call_count == 2
 
 
+def test_agent_graph_actually_executes_query_analytics_via_the_real_tool_node(
+    monkeypatch, test_engine
+):
+    # Descend un niveau sous test_agent_calls_analytics_tool_then_answers
+    # ci-dessus : celui-ci ne vérifie que la réponse finale scriptée par le
+    # faux LLM, qui ne dépend pas de ce que ToolNode a réellement produit —
+    # un tool mal nommé (mismatch entre le nom du tool_call et le nom réel
+    # de l'objet BaseTool) produit un ToolMessage d'erreur ("... is not a
+    # valid tool ...") que le graphe absorbe silencieusement, puisqu'il
+    # boucle "tools" -> "agent" quoi qu'il arrive. Ce cas concret s'est
+    # produit pendant le développement de ce mécanisme (voir RAPPORT.md,
+    # section diagnostic) : tools.py construit query_analytics via
+    # `tool(_query_analytics)` pour pouvoir lui assigner une docstring
+    # calculée à partir de FIELD_MAP (voir tools.py) — sans passer le nom
+    # explicitement, l'outil se retrouvait exposé sous "_query_analytics"
+    # au lieu de "query_analytics". Ce test regarde donc le ToolMessage
+    # produit par le VRAI ToolNode, pas seulement la réponse finale.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    with Session(test_engine) as session:
+        session.add(
+            Payslip(
+                mois_annee="03/2025",
+                salaire_brut=3000.0,
+                net_imposable=2400.0,
+                net_a_payer=2300.0,
+                total_cotisations_salariales=600.0,
+                total_cotisations_patronales=900.0,
+                cotisations_retraite=350.0,
+                prelevement_source=120.0,
+                raw_text="x",
+                filename="f.pdf",
+            )
+        )
+        session.commit()
+
+    fake_llm = _FakeLLM(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "query_analytics",
+                        "args": {"operation": "somme", "champ": "net_a_payer"},
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            AIMessage(content="peu importe cette réponse, seul le ToolMessage compte ici"),
+        ]
+    )
+    monkeypatch.setattr(graph_mod, "_llm", fake_llm)
+
+    result = graph_mod.agent_graph.invoke(
+        {"messages": [HumanMessage(content="Quel est le total du net à payer ?")]}
+    )
+
+    tool_message = result["messages"][2]
+    assert isinstance(tool_message, ToolMessage)
+    assert tool_message.status == "success"
+    assert json.loads(tool_message.content) == {
+        "operation": "somme",
+        "champ": "net_a_payer",
+        "periode": "1 mois (03/2025 à 03/2025)",
+        "resultat": 2300.0,
+    }
+
+
 def _seed_multi_year(test_engine) -> None:
     with Session(test_engine) as session:
         session.add_all(
@@ -290,6 +358,39 @@ def test_system_prompt_instructs_citing_the_source(monkeypatch, test_engine):
     content = graph_mod._build_system_prompt().content
     assert "mois_annee" in content
     assert "source" in content.lower()
+
+
+def test_system_prompt_states_the_field_ambiguity_principle(monkeypatch, test_engine):
+    # Mécanisme général demandé par PROMPT.md : le prompt système doit
+    # porter une RÈGLE DE COMPORTEMENT générique (jamais choisir un champ
+    # en silence face à une correspondance non évidente), pas une liste de
+    # termes déjà résolus — donc ce test vérifie la présence de la règle et
+    # de ses mots-clés d'obligation, pas une liste fermée de synonymes.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "identité évidente" in content
+    assert "clarification" in content.lower()
+    # La règle doit explicitement se déclarer non limitée aux exemples
+    # cités (cotisations sociales / charges / net / salaire) : c'est ce qui
+    # la rend valable pour une formulation non anticipée aujourd'hui.
+    assert "tout terme" in content.lower()
+
+
+def test_system_prompt_distinguishes_calculation_periode_from_available_period(
+    monkeypatch, test_engine
+):
+    # Bug de période rapporté : le LLM a une fois cité la période totale
+    # des bulletins importés (get_available_period(), contexte général) à
+    # la place de la période réellement couverte par UN calcul filtré (le
+    # champ periode du résultat de CET appel à query_analytics). Cette
+    # règle doit être générale (vaut pour toute réponse de calcul), donc ce
+    # test vérifie la présence de la distinction elle-même, pas un exemple
+    # chiffré particulier.
+    monkeypatch.setattr(analytics_mod, "engine", test_engine)
+    content = graph_mod._build_system_prompt().content
+    assert "champ periode" in content
+    assert "période totale des bulletins importés" in content
+    assert "JAMAIS" in content and "confonds" in content.lower()
 
 
 def test_system_prompt_discourages_the_rag_tool_for_general_knowledge_questions(
