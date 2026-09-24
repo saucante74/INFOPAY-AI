@@ -245,7 +245,7 @@ The script refuses to produce metrics if any `expected_evidence` in
 extracts — so a change to the PDFs, the chunking or the extraction fails
 loudly instead of silently scoring against stale expectations.
 
-See RAPPORT.md for the measured results, the metric definitions, and why the
+See RAPPORT_EVALUATION_RAG.md for the measured results, the metric definitions, and why the
 citation metric is adapted the way it is.
 
 ## What's left to do

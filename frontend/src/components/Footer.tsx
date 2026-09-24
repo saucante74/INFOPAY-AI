@@ -3,12 +3,13 @@ import { Link } from "react-router";
 /**
  * "Contact" was dropped entirely — no page exists for it, and none is planned.
  *
- * "Fiabilité" sits here rather than in the Navbar on purpose: the Navbar
- * holds the two routes a user comes here to *use* (Analyseur, Aide), while
- * the footer already collects the pages that state what the service does and
- * doesn't do (Confidentialité, Conditions d'utilisation). A page of measured
- * RAG metrics is transparency material of exactly that kind — permanently
- * reachable, never on the critical path of importing a payslip.
+ * "Fiabilité" points at the same `/metriques` page as the Navbar's
+ * "Évaluation" tab. The two labels are deliberately different: the Navbar
+ * one names the *page* in the tool's own vocabulary (short, one word, sits
+ * beside "Analyseur" and "Aide"), while this one sits among the
+ * transparency links (Confidentialité, Conditions d'utilisation) and says
+ * what the reader is there to learn — how far the assistant can be trusted.
+ * The page's own title, "Fiabilité de l'assistant — mesures", bridges both.
  */
 const FOOTER_LINKS = [
   { label: "Fiabilité", to: "/metriques" },

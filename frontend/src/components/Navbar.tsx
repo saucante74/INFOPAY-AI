@@ -31,7 +31,14 @@ export default function Navbar() {
   return (
     <header className="border-b border-border bg-surface-raised">
       {/* Matches `RootLayout`'s `<main>` width — see RAPPORT.md. */}
-      <div className="mx-auto flex h-16 w-full max-w-[1540px] items-center gap-6 px-4">
+      {/* Below `sm` the row wraps: logo + right-hand icons stay on the first
+          line and the three tabs drop to a second one (`order-last w-full`
+          on the <nav>). Measured, not assumed — see RAPPORT.md: with the
+          brand text hidden, logo + 3 tabs + quota gauges + theme + login is
+          ~460px of content, which overflows a 375px viewport on one line.
+          `min-h-16` (not `h-16`) so the desktop bar is still exactly 64px
+          while the mobile one is free to grow to two lines. */}
+      <div className="mx-auto flex min-h-16 w-full max-w-[1540px] flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:py-0">
         <div className="flex items-center gap-2">
           {/* `logo-mark.svg`: a genuinely transparent, hand-authored vector
               icon (a document outline + a teal checkmark seal), confirmed
@@ -42,10 +49,13 @@ export default function Navbar() {
               with no colored badge or background-matched chip, correct
               this time: there is no opaque content to hide. */}
           <img src="/logo-mark.svg" alt="" className="h-8 w-8" />
-          <span className="text-lg font-bold text-ink">InfoPay AI</span>
+          <span className="hidden text-lg font-bold text-ink sm:inline">InfoPay AI</span>
         </div>
 
-        <nav aria-label="Navigation principale" className="flex items-center gap-6 text-sm">
+        <nav
+          aria-label="Navigation principale"
+          className="order-last flex w-full items-center gap-6 text-sm sm:order-none sm:w-auto"
+        >
           {/* `end`: without it, NavLink treats "/" as a prefix match and
               would also report active on every other route. */}
           <NavLink to="/" end className={navLinkClassName}>
@@ -53,6 +63,9 @@ export default function Navbar() {
           </NavLink>
           <NavLink to="/aide" className={navLinkClassName}>
             Aide
+          </NavLink>
+          <NavLink to="/metriques" className={navLinkClassName}>
+            Évaluation
           </NavLink>
         </nav>
 
