@@ -15,6 +15,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* `src/data/rag_run.json` is imported as a module by MetricsPage, which
+       is what gives its shape a compile-time type inferred from the actual
+       file — a renamed or dropped metric fails `tsc -b` instead of rendering
+       `undefined`. Vite already resolves JSON imports natively. */
+    "resolveJsonModule": true,
+
     /* Strictness. `strict` is the baseline, the rest are the extra checks
        it does NOT turn on — see CONVENTIONS.md for why each one is here. */
     "strict": true,

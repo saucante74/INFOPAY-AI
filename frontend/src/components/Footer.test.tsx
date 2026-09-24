@@ -12,9 +12,10 @@ describe("Footer", () => {
     expect(screen.getByText(`© ${year} InfoPay AI. Tous droits réservés.`)).toBeInTheDocument();
   });
 
-  it("renders the two legal links, pointing to their respective pages", () => {
+  it("renders the transparency and legal links, pointing to their respective pages", () => {
     renderWithRouter(<Footer />);
 
+    expect(screen.getByRole("link", { name: "Fiabilité" })).toHaveAttribute("href", "/metriques");
     expect(screen.getByRole("link", { name: "Confidentialité" })).toHaveAttribute(
       "href",
       "/confidentialite"

@@ -215,6 +215,39 @@ Both backend and frontend suites run in CI on every push/PR touching their
 respective directory — see `.github/workflows/` (`mypy.yml`, `api-tests.yml`,
 `frontend-checks.yml`, `frontend-tests.yml`).
 
+## RAG evaluation
+
+`backend/evaluation/` measures how reliable the retrieval-augmented side of
+the assistant actually is, against a fixed 36-case benchmark (24 answerable,
+12 not) built from the sample payslips in `frontend/public/exemples/`.
+
+Unlike the test suites above, **this one does call the real Anthropic API**
+(~75 calls, under $1, about 5 minutes) — it is a manual measurement tool, not
+part of CI. It still never touches `backend/data/`: it builds its own SQLite +
+ChromaDB corpus under `backend/evaluation/.corpus/` (gitignored).
+
+```bash
+# from the project root — needs ANTHROPIC_API_KEY in backend/.env
+backend/venv/bin/python3 backend/evaluation/run_benchmark.py
+
+# force re-extraction of the 7 PDFs (7 extra API calls); otherwise the
+# corpus from a previous run is reused and extraction costs nothing
+backend/venv/bin/python3 backend/evaluation/run_benchmark.py --rebuild-corpus
+```
+
+Results are written to `frontend/src/data/rag_run.json` and displayed at
+`/metriques` (linked from the footer as "Fiabilité"). Because the page
+imports that JSON as a module, updating the published metrics means
+re-running the benchmark **and rebuilding the frontend**.
+
+The script refuses to produce metrics if any `expected_evidence` in
+`benchmark.json` is no longer literally present in the text pdfplumber
+extracts — so a change to the PDFs, the chunking or the extraction fails
+loudly instead of silently scoring against stale expectations.
+
+See RAPPORT_EVALUATION_RAG.md for the measured results, the metric definitions, and why the
+citation metric is adapted the way it is.
+
 ## What's left to do
 
 1. **Test with real payslip PDFs** (varied formats if possible) to validate

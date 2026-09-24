@@ -40,6 +40,46 @@ describe("Navbar", () => {
     const aide = screen.getByRole("link", { name: "Aide" });
     expect(aide).not.toHaveAttribute("aria-current");
     expect(aide).toHaveAttribute("href", "/aide");
+
+    const evaluation = screen.getByRole("link", { name: "Évaluation" });
+    expect(evaluation).not.toHaveAttribute("aria-current");
+    expect(evaluation).toHaveAttribute("href", "/metriques");
+  });
+
+  it("marks 'Évaluation' as the current page on '/metriques', and only that tab", () => {
+    renderWithRouter(<Navbar />, "/metriques");
+
+    expect(screen.getByRole("link", { name: "Évaluation" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
+    expect(screen.getByRole("link", { name: "Analyseur" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Aide" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("lists the three tabs in order inside the navigation landmark", () => {
+    renderWithRouter(<Navbar />);
+
+    const nav = screen.getByRole("navigation", { name: "Navigation principale" });
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => link.textContent)
+    ).toEqual(["Analyseur", "Aide", "Évaluation"]);
+  });
+
+  it("hides the 'InfoPay AI' text below the sm breakpoint but keeps it from sm up, leaving the logo visible", () => {
+    const { container } = renderWithRouter(<Navbar />);
+
+    // Class presence only: jsdom applies no stylesheet, so whether the text
+    // is *actually* hidden at a given width can't be observed here — that
+    // was measured in a real browser (see RAPPORT.md).
+    const brand = screen.getByText("InfoPay AI");
+    expect(brand).toHaveClass("hidden", "sm:inline");
+
+    const logo = container.querySelector("img");
+    expect(logo).not.toBeNull();
+    expect(logo).not.toHaveClass("hidden");
   });
 
   it("marks 'Aide' as the current page on '/aide', not 'Analyseur'", () => {
