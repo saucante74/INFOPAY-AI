@@ -5,6 +5,7 @@ import RootLayout from "./layouts/RootLayout";
 import AnalyzerPage from "./pages/AnalyzerPage";
 import HelpPage from "./pages/HelpPage";
 import LoginPage from "./pages/LoginPage";
+import MetricsPage from "./pages/MetricsPage";
 import NotFoundPage from "./pages/NotFoundPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
@@ -30,6 +31,7 @@ export default function App() {
           <Route index element={<AnalyzerPage />} />
           <Route path="login" element={<LoginPage />} />
           <Route path="aide" element={<HelpPage />} />
+          <Route path="metriques" element={<MetricsPage />} />
           <Route path="confidentialite" element={<PrivacyPage />} />
           <Route path="conditions-utilisation" element={<TermsPage />} />
           <Route path="*" element={<NotFoundPage />} />

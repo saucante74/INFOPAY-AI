@@ -1,0 +1,1014 @@
+{
+  "generated_at": "2026-09-24T09:55:22+00:00",
+  "benchmark": {
+    "file": "backend/evaluation/benchmark.json",
+    "total_cases": 36,
+    "answerable_cases": 24,
+    "unanswerable_cases": 12,
+    "unanswerable_breakdown": {
+      "off_topic": 4,
+      "absent_field": 7,
+      "not_imported": 1
+    }
+  },
+  "retrieval": {
+    "source_hit_at_1": {
+      "count": 6,
+      "denominator": 24,
+      "rate": 0.25
+    },
+    "source_hit_at_3": {
+      "count": 8,
+      "denominator": 24,
+      "rate": 0.3333
+    },
+    "evidence_hit_at_1": {
+      "count": 3,
+      "denominator": 24,
+      "rate": 0.125
+    },
+    "evidence_hit_at_3": {
+      "count": 5,
+      "denominator": 24,
+      "rate": 0.2083
+    },
+    "unanswerable_with_retrieved_chunks": {
+      "count": 7,
+      "denominator": 12,
+      "rate": 0.5833
+    }
+  },
+  "response_behavior": {
+    "correct_abstentions": {
+      "count": 8,
+      "denominator": 12,
+      "rate": 0.6667
+    },
+    "false_abstentions": {
+      "count": 13,
+      "denominator": 24,
+      "rate": 0.5417
+    },
+    "correct_abstentions_by_kind": {
+      "absent_field": {
+        "count": 7,
+        "denominator": 7,
+        "rate": 1.0
+      },
+      "not_imported": {
+        "count": 1,
+        "denominator": 1,
+        "rate": 1.0
+      },
+      "off_topic": {
+        "count": 0,
+        "denominator": 4,
+        "rate": 0.0
+      }
+    },
+    "detection": {
+      "method": "marqueurs lexicaux appliqués à la réponse normalisée (minuscules, accents retirés)",
+      "markers": [
+        "aucune information",
+        "aucune mention",
+        "aucune ligne",
+        "aucune donnee",
+        "aucun element",
+        "aucun bulletin",
+        "aucun document",
+        "pas d'information",
+        "n'ai trouve",
+        "ne trouve pas",
+        "ne figure pas",
+        "ne figurent pas",
+        "n'apparait pas",
+        "n'apparaissent pas",
+        "ne contient pas",
+        "ne contiennent pas",
+        "ne mentionne pas",
+        "ne mentionnent pas",
+        "n'est pas mentionne",
+        "ne sont pas mentionne",
+        "n'est pas present",
+        "ne dispose pas",
+        "n'est pas importe",
+        "n'a pas ete importe"
+      ],
+      "caveat": "Heuristique, pas un juge LLM : une abstention formulée hors de ces marqueurs serait comptée comme une réponse. Chaque réponse est conservée (tronquée) dans `cases` pour permettre une vérification manuelle."
+    }
+  },
+  "traceability": {
+    "answerable_responses_with_sources": {
+      "count": 5,
+      "denominator": 24,
+      "rate": 0.2083
+    },
+    "well_formed_sources": {
+      "count": 9,
+      "denominator": 9,
+      "rate": 1.0
+    },
+    "adaptation_note": "Cette architecture n'émet pas d'identifiant de citation dans le texte de la réponse : les sources sont un tableau (mois_annee, extrait) reconstruit mécaniquement à partir des ToolMessage du graphe (voir _extract_sources). « Citation valide » est donc mesuré comme « source bien formée » : les deux champs sont non vides. Le lien entre une phrase précise de la réponse et la source qui la soutient n'est PAS vérifié ici — cela relèverait de la relecture humaine déclarée non applicable."
+  },
+  "human_review": {
+    "answer_correctness": "not_applicable",
+    "grounding": "not_applicable",
+    "coverage": "not_applicable",
+    "support": "not_applicable",
+    "note": "Ces quatre métriques exigent une relecture humaine cas par cas, qui n'a pas été menée. Elles sont déclarées non applicables plutôt qu'affichées à zéro, ce qui laisserait croire à une mesure ratée au lieu d'une mesure absente."
+  },
+  "provenance": {
+    "embedding_model": "all-MiniLM-L6-v2",
+    "embedding_runtime": "ONNXMiniLM_L6_V2",
+    "generation_model": "claude-sonnet-4-6",
+    "extraction_model": "claude-sonnet-4-6",
+    "provider": "langchain_anthropic",
+    "retrieval_top_k": 3,
+    "similarity_distance_threshold": 1.1,
+    "chunk_size": 800,
+    "chunk_overlap": 100,
+    "indexed_pdfs": 7,
+    "indexed_documents": 7,
+    "indexed_chunks": 13,
+    "indexed_months": [
+      "01/2026",
+      "02/2026",
+      "03/2023",
+      "03/2026",
+      "04/2026",
+      "08/2025",
+      "11/2024"
+    ],
+    "excluded_pdfs": [
+      "bulletin_batirenov_06_2022.pdf"
+    ],
+    "extraction_api_calls_this_run": 7
+  },
+  "api_calls": {
+    "extraction": 7,
+    "chat_runs": 36,
+    "chat_llm_invocations": 68,
+    "note": "Comptage réel, pas une estimation : chat_llm_invocations est incrémenté dans le nœud agent du graphe (un appel pour décider de l'outil, un autre pour rédiger la réponse à partir de son résultat)."
+  },
+  "caveat": "Mesuré sur un benchmark restreint (36 cas) construit manuellement à partir de 7 bulletins fictifs. Ces chiffres décrivent ce corpus, pas la performance du système en production.",
+  "cases": [
+    {
+      "id": "A01",
+      "question": "Sur mon bulletin de janvier 2026, à quoi correspond la ligne CSG déductible ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "01/2026",
+      "expected_evidence": [
+        "CSG déductible",
+        "213,79"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "02/2026",
+          "distance": 0.8799,
+          "text": ",58 €\nAccidents du travail 3 350,00 € - 40,20 €\nFNAL / CSE / Formation professionnelle 3 350,00 € - 53,60 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %)"
+        },
+        {
+          "rank": 2,
+          "mois_annee": "04/2026",
+          "distance": 0.8911,
+          "text": "6 €\nAccidents du travail 3 480,00 € - 41,76 €\nFNAL / CSE / Formation professionnelle 3 480,00 € - 55,68 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3"
+        },
+        {
+          "rank": 3,
+          "mois_annee": "01/2026",
+          "distance": 0.8985,
+          "text": "0 € - 38,40 €\nFNAL / CSE / Formation professionnelle 3 200,00 € - 51,20 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3 144,00 € 213,79 € -\nCSG/CRDS no"
+        }
+      ],
+      "abstained": false,
+      "sources_total": 3,
+      "sources_well_formed": 3,
+      "reply_excerpt": "Les extraits trouvés proviennent des bulletins de février, mars et avril 2026, et non de janvier 2026 spécifiquement. Cependant, la ligne CSG déductible fonctionne de la même façon sur l'ensemble de vos bulletins, je peux donc vous l'expliquer à partir de ces données.\n\nLa CSG déductible, qui apparaît sur vos bulletins au taux de 6,80 %, est la Contribution Sociale Généralisée dans sa fraction déductible de l'impôt sur le revenu. Concrètement, elle est prélevée directement sur votre salaire (c'est une cotisation salariale), mais son montant vient réduire votre base imposable, c'est-à-dire votre"
+    },
+    {
+      "id": "A02",
+      "question": "Quel est le montant du prélèvement à la source sur mon bulletin de janvier 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "01/2026",
+      "expected_evidence": [
+        "Prélèvement à la source",
+        "236,93"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9876,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Le montant du prélèvement à la source sur votre bulletin de janvier 2026 est de 236,93 euros."
+    },
+    {
+      "id": "A03",
+      "question": "Quel poste est indiqué sur mon bulletin de janvier 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "01/2026",
+      "expected_evidence": [
+        "Janvier 2026",
+        "Ingénieur Développement"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9889,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant votre poste ou intitulé d'emploi dans vos bulletins importés, y compris pour janvier 2026. Il est possible que cette information ne soit pas extraite ou indexée par le système.\n\nJe vous invite à consulter directement votre bulletin de janvier 2026 pour retrouver cette mention."
+    },
+    {
+      "id": "A04",
+      "question": "J'ai eu une prime en février 2026, de quel montant était-elle ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "02/2026",
+      "expected_evidence": [
+        "Prime exceptionnelle",
+        "150,00"
+      ],
+      "retrieved": [],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant une prime en février 2026 dans vos bulletins importés.\n\nCela peut s'expliquer par le fait que le bulletin de février 2026 ne fait pas partie des bulletins actuellement importés (les bulletins disponibles couvrent la période de 03/2023 à 04/2026, mais tous les mois intermédiaires ne sont pas nécessairement présents). Il est également possible que la prime n'apparaisse pas sous ce libellé dans le document.\n\nJe vous invite à vérifier que le bulletin de février 2026 a bien été importé, et si oui, à me préciser le libellé exact sous lequel la prime appar"
+    },
+    {
+      "id": "A05",
+      "question": "Quel était mon salaire brut en février 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "02/2026",
+      "expected_evidence": [
+        "SALAIRE BRUT",
+        "3 350,00"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 1.0034,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Votre salaire brut en février 2026 était de 3 350,00 euros."
+    },
+    {
+      "id": "A06",
+      "question": "Combien ai-je perçu en net à payer en février 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "02/2026",
+      "expected_evidence": [
+        "NET À PAYER",
+        "2 415,11"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9683,
+          "text": "AEROSPACE DYNAMICS FRANCE Matricule : AD-2024-0891\nDivision Interconnexion & Systèmes Embarqués\nBULLETIN DE SALAIRE — 08/2025\nMOREAU Julien — Technicien Supérieur Qualité — Coefficient 285 — N° Sécuri"
+        },
+        {
+          "rank": 2,
+          "mois_annee": "11/2024",
+          "distance": 1.0192,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        },
+        {
+          "rank": 3,
+          "mois_annee": "08/2025",
+          "distance": 1.0441,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "En février 2026, votre net à payer s'élevait à 2 415,11 euros."
+    },
+    {
+      "id": "A07",
+      "question": "Ai-je des heures supplémentaires sur mon bulletin de mars 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "03/2026",
+      "expected_evidence": [
+        "Heures supplémentaires",
+        "120,00"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9932,
+          "text": "titue pas un document officiel."
+        },
+        {
+          "rank": 2,
+          "mois_annee": "08/2025",
+          "distance": 1.0721,
+          "text": "AEROSPACE DYNAMICS FRANCE Matricule : AD-2024-0891\nDivision Interconnexion & Systèmes Embarqués\nBULLETIN DE SALAIRE — 08/2025\nMOREAU Julien — Technicien Supérieur Qualité — Coefficient 285 — N° Sécuri"
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information relative à des heures supplémentaires dans votre bulletin de mars 2026. Il est possible que ce bulletin ne comporte tout simplement pas de ligne d'heures supplémentaires, ce qui signifierait que vous n'en avez pas eu ce mois-là.\n\nSi vous pensez qu'il devrait y en avoir, je vous invite à vérifier directement votre bulletin original, ou à vous rapprocher de votre service RH pour confirmation."
+    },
+    {
+      "id": "A08",
+      "question": "À combien s'élève le cumul de mes cotisations retraite en mars 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "03/2026",
+      "expected_evidence": [
+        "Cumul cotisations retraite",
+        "517,92"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "11/2024",
+          "distance": 1.0641,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        }
+      ],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Pour le mois de mars 2026, le total de vos cotisations retraite s'élève à 517,92 euros.\n\nUne précision importante : selon la présentation de votre bulletin, ce montant peut regrouper à la fois la part salariale et la part patronale des cotisations retraite (base et complémentaire). Si vous souhaitez isoler uniquement la part que vous payez en tant que salarié, il n'est pas garanti que cette distinction soit disponible dans les données extraites de votre bulletin."
+    },
+    {
+      "id": "A09",
+      "question": "Quel est mon net imposable de mars 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "03/2026",
+      "expected_evidence": [
+        "NET IMPOSABLE",
+        "2 733,61"
+      ],
+      "retrieved": [],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Votre net imposable pour mars 2026 est de 2 733,61 euros.\n\nPour rappel, le net imposable est la base utilisée pour le calcul de l'impôt sur le revenu. Il est différent de votre net à payer (le montant réellement versé sur votre compte), qui est généralement inférieur car il tient compte du prélèvement à la source. N'hésitez pas à me demander si vous souhaitez connaître l'un ou l'autre de ces montants."
+    },
+    {
+      "id": "A10",
+      "question": "Quel est mon salaire brut en avril 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "04/2026",
+      "expected_evidence": [
+        "SALAIRE BRUT",
+        "3 480,00"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9534,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Votre salaire brut en avril 2026 était de 3 480,00 euros."
+    },
+    {
+      "id": "A11",
+      "question": "Que signifie la ligne CSG/CRDS non déductible sur mon bulletin d'avril 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "04/2026",
+      "expected_evidence": [
+        "CSG/CRDS non déductible",
+        "99,15"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "04/2026",
+          "distance": 0.8804,
+          "text": "6 €\nAccidents du travail 3 480,00 € - 41,76 €\nFNAL / CSE / Formation professionnelle 3 480,00 € - 55,68 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3"
+        },
+        {
+          "rank": 2,
+          "mois_annee": "02/2026",
+          "distance": 0.8823,
+          "text": ",58 €\nAccidents du travail 3 350,00 € - 40,20 €\nFNAL / CSE / Formation professionnelle 3 350,00 € - 53,60 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %)"
+        },
+        {
+          "rank": 3,
+          "mois_annee": "03/2026",
+          "distance": 0.9022,
+          "text": "54 €\nAccidents du travail 3 320,00 € - 39,84 €\nFNAL / CSE / Formation professionnelle 3 320,00 € - 53,12 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) "
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information spécifique à ce sujet dans vos bulletins importés. Je vais donc vous répondre avec mes connaissances générales sur cette ligne.\n\nLa CSG/CRDS non déductible désigne la fraction de la Contribution Sociale Généralisée (CSG) et de la Contribution au Remboursement de la Dette Sociale (CRDS) qui ne peut pas être déduite de votre revenu imposable.\n\nVoici comment cela fonctionne concrètement :\n\nLa CSG est prélevée à un taux global de 9,2 % sur votre salaire brut (après un abattement de 1,75 %). Une partie de cette CSG, soit 6,8 %, est déductible de votre revenu imposa"
+    },
+    {
+      "id": "A12",
+      "question": "Mon salaire de base a-t-il changé sur mon bulletin d'avril 2026 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "04/2026",
+      "expected_evidence": [
+        "Salaire de base",
+        "3 280,00"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.8437,
+          "text": "titue pas un document officiel."
+        },
+        {
+          "rank": 2,
+          "mois_annee": "04/2026",
+          "distance": 1.0462,
+          "text": "6 €\nAccidents du travail 3 480,00 € - 41,76 €\nFNAL / CSE / Formation professionnelle 3 480,00 € - 55,68 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3"
+        },
+        {
+          "rank": 3,
+          "mois_annee": "11/2024",
+          "distance": 1.0477,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information sur le salaire de base d'avril 2026 dans vos bulletins importés. Cela peut signifier que cette donnée n'est pas présente sous cette forme dans le document, ou qu'elle n'a pas pu être extraite.\n\nPour comparer l'évolution de votre salaire brut, je peux calculer le montant sur avril 2026 et le comparer au mois précédent. Souhaitez-vous que je fasse cette comparaison ?"
+    },
+    {
+      "id": "A13",
+      "question": "Sur mon bulletin PharmaOuest de mars 2023, à quoi correspond la ligne Charges sociales salarié ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "03/2023",
+      "expected_evidence": [
+        "Charges sociales salarié",
+        "705,30"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "03/2023",
+          "distance": 0.9131,
+          "text": "PHARMAOUEST DISTRIBUTION\nSanté & Distribution Pharmaceutique — Bulletin de salaire\nSalarié : MOREAU Julien | Mois : 03/2023 | Fonction : Responsable Logistique Régional\nMONTANT NET VERSÉ 2 109,40 €\nRé"
+        },
+        {
+          "rank": 2,
+          "mois_annee": "11/2024",
+          "distance": 1.067,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés. La ligne \"Charges sociales salarié\" ne ressort pas des données extraites de votre bulletin PharmaOuest de mars 2023.\n\nIl est possible que cette ligne soit présentée sous un libellé légèrement différent dans le document original, ou qu'elle n'ait pas été indexée de façon à correspondre à cette recherche.\n\nDe manière générale, en paie française, une ligne intitulée \"Charges sociales salarié\" regroupe l'ensemble des cotisations sociales prélevées sur votre salaire brut à votre charge (part salariale), comme les cotisations "
+    },
+    {
+      "id": "A14",
+      "question": "Quel montant net m'a été versé en mars 2023 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "03/2023",
+      "expected_evidence": [
+        "MONTANT NET VERSÉ",
+        "2 109,40"
+      ],
+      "retrieved": [],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "En mars 2023, le montant net à payer qui vous a été versé s'élève à 2 109,40 euros. Ce montant correspond à ce qui a été réellement crédité sur votre compte, après toutes les cotisations et retenues (y compris le prélèvement à la source)."
+    },
+    {
+      "id": "A15",
+      "question": "Combien de cotisations retraite figurent sur mon bulletin de mars 2023 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "03/2023",
+      "expected_evidence": [
+        "Retraite (base + AGIRC-ARRCO, 2 parts)",
+        "460,00"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "11/2024",
+          "distance": 1.0276,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        },
+        {
+          "rank": 2,
+          "mois_annee": "08/2025",
+          "distance": 1.0564,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information sur les cotisations retraite dans votre bulletin de mars 2023. Il est possible que ce bulletin ne contienne pas de lignes explicitement libellées \"retraite\", ou que le contenu n'ait pas été indexé de façon à permettre cette recherche.\n\nSi vous souhaitez connaître le montant total des cotisations retraite sur ce bulletin, je peux effectuer ce calcul. Sinon, je vous invite à consulter directement votre bulletin de mars 2023 pour voir le détail des lignes retraite qui y figurent."
+    },
+    {
+      "id": "A16",
+      "question": "Quelle était ma fonction chez PharmaOuest en mars 2023 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "03/2023",
+      "expected_evidence": [
+        "Responsable Logistique Régional"
+      ],
+      "retrieved": [],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information à ce sujet dans vos bulletins importés. Il est possible que la mention de votre fonction ou intitulé de poste ne figure pas dans les données extraites de votre bulletin de mars 2023, ou que cette information n'ait pas été capturée lors de l'import.\n\nJe vous invite à consulter directement votre bulletin de paie original de mars 2023 pour retrouver cette information."
+    },
+    {
+      "id": "A17",
+      "question": "À quoi correspond la prime de nuit sur mon bulletin de novembre 2024 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "11/2024",
+      "expected_evidence": [
+        "Prime de nuit",
+        "145,00"
+      ],
+      "retrieved": [],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant une prime de nuit dans vos bulletins importés. Il est possible que cette ligne ne figure pas dans les bulletins disponibles, ou qu'elle soit désignée par un libellé différent.\n\nSi vous souhaitez que je recherche avec un autre terme (par exemple \"majoration nuit\", \"indemnité nuit\", ou un libellé exact tel qu'il apparaît sur votre bulletin), n'hésitez pas à me le préciser."
+    },
+    {
+      "id": "A18",
+      "question": "Quel taux de CSG/CRDS est appliqué sur mon bulletin de novembre 2024 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "11/2024",
+      "expected_evidence": [
+        "CSG/CRDS",
+        "9,70%",
+        "243,25"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "02/2026",
+          "distance": 1.0831,
+          "text": ",58 €\nAccidents du travail 3 350,00 € - 40,20 €\nFNAL / CSE / Formation professionnelle 3 350,00 € - 53,60 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %)"
+        },
+        {
+          "rank": 2,
+          "mois_annee": "04/2026",
+          "distance": 1.0884,
+          "text": "6 €\nAccidents du travail 3 480,00 € - 41,76 €\nFNAL / CSE / Formation professionnelle 3 480,00 € - 55,68 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3"
+        },
+        {
+          "rank": 3,
+          "mois_annee": "01/2026",
+          "distance": 1.09,
+          "text": "0 € - 38,40 €\nFNAL / CSE / Formation professionnelle 3 200,00 € - 51,20 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3 144,00 € 213,79 € -\nCSG/CRDS no"
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information relative au taux de CSG/CRDS dans vos bulletins importés. Il est possible que votre bulletin de novembre 2024 ne fasse pas partie des 7 bulletins actuellement importés (qui couvrent la période de 03/2023 à 04/2026), ou que cette information n'ait pas pu être extraite du document.\n\nSi vous souhaitez connaître le taux appliqué, je vous invite à consulter directement votre bulletin de novembre 2024 : la ligne CSG/CRDS y figure généralement avec le taux (en pourcentage) dans la colonne correspondante. À titre indicatif, les taux légaux en vigueur en France sont de"
+    },
+    {
+      "id": "A19",
+      "question": "Combien ai-je cotisé en retraite complémentaire T1 en novembre 2024 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "11/2024",
+      "expected_evidence": [
+        "Retraite complémentaire T1",
+        "80,52"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "11/2024",
+          "distance": 0.9866,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        },
+        {
+          "rank": 2,
+          "mois_annee": "08/2025",
+          "distance": 1.0379,
+          "text": "titue pas un document officiel."
+        },
+        {
+          "rank": 3,
+          "mois_annee": "11/2024",
+          "distance": 1.0754,
+          "text": "CLINIQUE DU PARC — Établissement de Soins Privé\n8 Boulevard de la Santé, 33000 Bordeaux — SIRET 445 678 912 00027 — Conv. Coll. FHP (IDCC 2264)\nMOREAU Julien — Aide-Soignant(e) — N°SS 1 89 07 69 123 4"
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant une ligne « retraite complémentaire T1 » dans vos bulletins importés, et en particulier pour novembre 2024.\n\nIl est possible que cette ligne ne figure pas dans les bulletins disponibles, ou qu'elle soit libellée différemment. Je vous invite à vérifier le libellé exact tel qu'il apparaît sur votre bulletin de novembre 2024, et à me le préciser si vous souhaitez que je recherche à nouveau."
+    },
+    {
+      "id": "A20",
+      "question": "Quel est le net à payer de mon bulletin de novembre 2024 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "11/2024",
+      "expected_evidence": [
+        "NET À PAYER",
+        "1 817,30"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9595,
+          "text": "titue pas un document officiel."
+        },
+        {
+          "rank": 2,
+          "mois_annee": "01/2026",
+          "distance": 1.011,
+          "text": "0 € - 38,40 €\nFNAL / CSE / Formation professionnelle 3 200,00 € - 51,20 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3 144,00 € 213,79 € -\nCSG/CRDS no"
+        },
+        {
+          "rank": 3,
+          "mois_annee": "02/2026",
+          "distance": 1.031,
+          "text": ",58 €\nAccidents du travail 3 350,00 € - 40,20 €\nFNAL / CSE / Formation professionnelle 3 350,00 € - 53,60 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %)"
+        }
+      ],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Votre net à payer pour le mois de novembre 2024 est de 1 817,30 euros."
+    },
+    {
+      "id": "A21",
+      "question": "Sur mon bulletin AeroSpace d'août 2025, à quoi correspond la ligne retraite complémentaire cadres ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "08/2025",
+      "expected_evidence": [
+        "retraite complémentaire cadres",
+        "288,20"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9461,
+          "text": "AEROSPACE DYNAMICS FRANCE Matricule : AD-2024-0891\nDivision Interconnexion & Systèmes Embarqués\nBULLETIN DE SALAIRE — 08/2025\nMOREAU Julien — Technicien Supérieur Qualité — Coefficient 285 — N° Sécuri"
+        },
+        {
+          "rank": 2,
+          "mois_annee": "08/2025",
+          "distance": 1.0032,
+          "text": "titue pas un document officiel."
+        },
+        {
+          "rank": 3,
+          "mois_annee": "11/2024",
+          "distance": 1.06,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        }
+      ],
+      "abstained": false,
+      "sources_total": 1,
+      "sources_well_formed": 1,
+      "reply_excerpt": "Je n'ai pas trouvé d'information sur la ligne \"retraite complémentaire cadres\" dans vos bulletins importés. L'extrait renvoyé par la recherche provient d'un bulletin de 11/2024 d'un autre établissement (Clinique du Parc), et ne correspond pas à votre bulletin AeroSpace d'août 2025.\n\nCela peut signifier que cette ligne spécifique n'a pas été indexée de façon exploitable dans vos bulletins importés, ou qu'elle n'y figure pas sous ce libellé exact.\n\nJe peux cependant vous expliquer ce que représente cette ligne de manière générale, à partir de mes connaissances en paie française.\n\nLa retraite com"
+    },
+    {
+      "id": "A22",
+      "question": "Quel est mon taux de prélèvement à la source en août 2025 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "08/2025",
+      "expected_evidence": [
+        "taux personnalisé 9,90%"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 1.0098,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": false,
+      "sources_total": 1,
+      "sources_well_formed": 1,
+      "reply_excerpt": "D'après votre bulletin de août 2025, votre taux de prélèvement à la source est un taux personnalisé de 9,90 %. Ce taux a été appliqué sur un net imposable de 3 421,55 €, ce qui correspond à un montant prélevé de 410,60 €."
+    },
+    {
+      "id": "A23",
+      "question": "Quel poste figure sur mon bulletin d'août 2025 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "08/2025",
+      "expected_evidence": [
+        "Technicien Supérieur Qualité"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9942,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 1,
+      "sources_well_formed": 1,
+      "reply_excerpt": "L'extrait trouvé dans votre bulletin d'août 2025 ne contient pas d'information exploitable sur votre intitulé de poste. Je n'ai donc pas pu identifier cette information à partir du contenu disponible dans ce bulletin importé.\n\nSi vous souhaitez retrouver votre intitulé de poste, je vous invite à consulter directement votre bulletin d'août 2025, où il figure généralement en haut du document, dans la section d'identification du salarié (souvent sous la mention \"Emploi\" ou \"Qualification\")."
+    },
+    {
+      "id": "A24",
+      "question": "Quel est le montant du salaire de base et de la prime d'équipe en août 2025 ?",
+      "answerable": true,
+      "unanswerable_kind": null,
+      "expected_source": "08/2025",
+      "expected_evidence": [
+        "Salaire de base + prime d'équipe",
+        "4 150,00"
+      ],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "11/2024",
+          "distance": 1.0891,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        }
+      ],
+      "abstained": true,
+      "sources_total": 2,
+      "sources_well_formed": 2,
+      "reply_excerpt": "Je n'ai trouvé aucune information correspondant au bulletin d'août 2025 dans vos documents importés. Les bulletins disponibles couvrent la période de 03/2023 à 04/2026, mais il semble qu'aucun bulletin pour le mois d'août 2025 ne soit présent parmi les 7 bulletins importés.\n\nIl est possible que ce bulletin n'ait pas été importé. Je vous invite à vérifier si vous disposez du bulletin d'août 2025 et à l'importer si nécessaire, afin que je puisse vous donner les informations souhaitées."
+    },
+    {
+      "id": "U01",
+      "question": "Quelle est la capitale de l'Australie ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "La capitale de l'Australie est Canberra. C'est une ville planifiée, construite spécialement pour être la capitale fédérale du pays, et elle abrite notamment le Parlement australien. Elle ne doit pas être confondue avec Sydney ou Melbourne, qui sont les plus grandes villes du pays mais ne sont pas la capitale."
+    },
+    {
+      "id": "U02",
+      "question": "Peux-tu me donner une recette de tarte aux pommes ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je suis désolé, mais je suis spécialisé uniquement dans l'analyse de bulletins de paie français. Je ne suis pas en mesure de vous fournir des recettes de cuisine.\n\nSi vous avez des questions sur vos bulletins de paie (salaire brut, net à payer, cotisations, prélèvement à la source, etc.), je suis là pour vous aider !"
+    },
+    {
+      "id": "U03",
+      "question": "Comment installer Docker sur Ubuntu ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Docker est un outil de conteneurisation qui ne concerne pas vos bulletins de paie. Je peux vous répondre directement avec mes connaissances générales.\n\nVoici les grandes étapes pour installer Docker sur Ubuntu :\n\nMise à jour du système : commencez par mettre à jour vos paquets avec la commande \"sudo apt update && sudo apt upgrade\".\n\nInstallation des dépendances : installez les paquets nécessaires avec \"sudo apt install ca-certificates curl gnupg lsb-release\".\n\nAjout de la clé GPG officielle de Docker : récupérez et enregistrez la clé avec \"curl -fsSL https://download.docker.com/linux/ubuntu/gp"
+    },
+    {
+      "id": "U04",
+      "question": "Qui a gagné la Coupe du monde de football en 2018 ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 1.0845,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": false,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "La France a remporté la Coupe du monde de football en 2018, organisée en Russie. Les Bleus ont battu la Croatie en finale sur le score de 4-2, décrochant ainsi leur deuxième titre mondial après celui de 1998."
+    },
+    {
+      "id": "U05",
+      "question": "Combien de tickets restaurant m'ont été attribués ce mois-ci ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 1.0393,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant les tickets restaurant dans vos bulletins importés.\n\nIl est possible que cette information ne figure pas sur vos bulletins de paie, ou qu'elle soit communiquée par un autre canal (relevé de compte titres-restaurant, application dédiée, communication RH, etc.). Je vous invite à vous rapprocher de votre service des ressources humaines ou à consulter votre espace employé pour obtenir ce détail."
+    },
+    {
+      "id": "U06",
+      "question": "Quel est le montant de ma prime de 13e mois ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant une prime de 13e mois dans vos bulletins de paie importés.\n\nIl est possible que cette prime n'apparaisse pas dans les bulletins actuellement disponibles (couvrant la période de 03/2023 à 04/2026), soit parce qu'elle n'a pas encore été versée sur cette période, soit parce qu'elle n'est pas prévue dans votre contrat.\n\nSi vous pensez qu'elle devrait figurer sur l'un de vos bulletins, je vous invite à vérifier directement le document concerné ou à vous rapprocher de votre service RH."
+    },
+    {
+      "id": "U07",
+      "question": "Combien de jours de congés payés me reste-t-il ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 1.0571,
+          "text": "AEROSPACE DYNAMICS FRANCE Matricule : AD-2024-0891\nDivision Interconnexion & Systèmes Embarqués\nBULLETIN DE SALAIRE — 08/2025\nMOREAU Julien — Technicien Supérieur Qualité — Coefficient 285 — N° Sécuri"
+        },
+        {
+          "rank": 2,
+          "mois_annee": "11/2024",
+          "distance": 1.0594,
+          "text": " - 62,00 €\nPrime de nuit — charges spécifiques - - 12,25 € - 18,90 €\nTOTAL COTISATIONS 545,10 € 985,60 €\nSALAIRE BRUT 2 555,00 €\nNET IMPOSABLE 2 065,20 €\nPrélèvement à la source - 92,80 €\nNET À PAYER "
+        },
+        {
+          "rank": 3,
+          "mois_annee": "08/2025",
+          "distance": 1.1,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information sur vos congés payés dans vos bulletins importés.\n\nLes bulletins de paie français n'indiquent pas toujours le solde de congés restants, ou cette information peut figurer sous une forme que mes outils n'ont pas pu retrouver dans vos documents. Pour connaître votre solde exact, je vous recommande de consulter directement votre service RH ou votre espace salarié en ligne (si votre entreprise en dispose)."
+    },
+    {
+      "id": "U08",
+      "question": "Quel est le montant de mon indemnité de télétravail ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant une indemnité de télétravail dans vos bulletins de paie importés. Cette ligne ne semble pas figurer dans vos bulletins couvrant la période de mars 2023 à avril 2026.\n\nIl est possible que cette indemnité soit versée sous un autre libellé, ou qu'elle ne soit tout simplement pas présente dans vos bulletins. Si vous pensez qu'elle apparaît sous un autre nom, n'hésitez pas à me le préciser et je rechercherai à nouveau."
+    },
+    {
+      "id": "U09",
+      "question": "Quel est le montant de la participation aux bénéfices qui m'a été versée ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9295,
+          "text": "titue pas un document officiel."
+        },
+        {
+          "rank": 2,
+          "mois_annee": "04/2026",
+          "distance": 1.0923,
+          "text": "6 €\nAccidents du travail 3 480,00 € - 41,76 €\nFNAL / CSE / Formation professionnelle 3 480,00 € - 55,68 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3"
+        },
+        {
+          "rank": 3,
+          "mois_annee": "01/2026",
+          "distance": 1.0937,
+          "text": "0 € - 38,40 €\nFNAL / CSE / Formation professionnelle 3 200,00 € - 51,20 €\nMutuelle d'entreprise - 42,50 € 55,00 €\nPrévoyance - 18,30 € 24,00 €\nCSG déductible (6,80 %) 3 144,00 € 213,79 € -\nCSG/CRDS no"
+        }
+      ],
+      "abstained": true,
+      "sources_total": 1,
+      "sources_well_formed": 1,
+      "reply_excerpt": "Je n'ai trouvé aucune information relative à une participation aux bénéfices dans vos bulletins de paie importés. Il est possible que cette prime ne figure pas sur vos bulletins de salaire, car la participation aux bénéfices est souvent versée via un document distinct (bordereau de participation, relevé d'épargne salariale) et non directement sur le bulletin de paie mensuel.\n\nSi vous pensez qu'elle devrait y figurer sous un autre libellé, n'hésitez pas à me préciser le terme exact tel qu'il apparaît sur votre bulletin, je pourrai alors effectuer une recherche plus ciblée."
+    },
+    {
+      "id": "U10",
+      "question": "Combien d'intéressement ai-je perçu ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 1.0134,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information relative à l'intéressement dans vos bulletins de paie importés. Il est possible que vous n'ayez pas perçu d'intéressement sur la période couverte par vos bulletins (mars 2023 à avril 2026), ou que cette prime ne figure pas sur les bulletins actuellement disponibles.\n\nSi vous pensez avoir reçu un versement d'intéressement, il est souvent communiqué via un document séparé (relevé de participation ou d'intéressement) et non directement sur le bulletin de paie mensuel. Je vous invite à vérifier vos documents annexes ou à contacter votre service RH pour en avoir co"
+    },
+    {
+      "id": "U11",
+      "question": "Combien de jours de RTT ai-je acquis ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 1.0181,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Je n'ai trouvé aucune information concernant les jours de RTT acquis dans vos bulletins de paie importés.\n\nLes bulletins de paie ne mentionnent pas toujours le détail des RTT acquis : cette information figure parfois uniquement sur un compteur interne à votre entreprise (logiciel RH, espace salarié, etc.) ou sur un document séparé comme un récapitulatif de congés.\n\nJe vous conseille de vous rapprocher de votre service RH ou de consulter votre espace salarié en ligne pour obtenir ce solde précis."
+    },
+    {
+      "id": "U12",
+      "question": "Quel est le salaire brut indiqué sur mon bulletin BatiRenov de juin 2022 ?",
+      "answerable": false,
+      "unanswerable_kind": "not_imported",
+      "expected_source": null,
+      "expected_evidence": [],
+      "retrieved": [
+        {
+          "rank": 1,
+          "mois_annee": "08/2025",
+          "distance": 0.9126,
+          "text": "titue pas un document officiel."
+        }
+      ],
+      "abstained": true,
+      "sources_total": 0,
+      "sources_well_formed": 0,
+      "reply_excerpt": "Vos bulletins importés couvrent la période de 03/2023 à 04/2026, et aucun bulletin de juin 2022 ne figure dans cet historique. Il m'est donc impossible de vous donner cette information.\n\nSi vous souhaitez consulter ce bulletin, vous devrez l'importer dans l'application. Je pourrai ensuite vous répondre précisément."
+    }
+  ]
+}

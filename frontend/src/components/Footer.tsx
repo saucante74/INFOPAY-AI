@@ -1,7 +1,18 @@
 import { Link } from "react-router";
 
-/** "Contact" was dropped entirely — no page exists for it, and none is planned. */
+/**
+ * "Contact" was dropped entirely — no page exists for it, and none is planned.
+ *
+ * "Fiabilité" points at the same `/metriques` page as the Navbar's
+ * "Évaluation" tab. The two labels are deliberately different: the Navbar
+ * one names the *page* in the tool's own vocabulary (short, one word, sits
+ * beside "Analyseur" and "Aide"), while this one sits among the
+ * transparency links (Confidentialité, Conditions d'utilisation) and says
+ * what the reader is there to learn — how far the assistant can be trusted.
+ * The page's own title, "Fiabilité de l'assistant — mesures", bridges both.
+ */
 const FOOTER_LINKS = [
+  { label: "Fiabilité", to: "/metriques" },
   { label: "Confidentialité", to: "/confidentialite" },
   { label: "Conditions d'utilisation", to: "/conditions-utilisation" },
 ] as const satisfies readonly { label: string; to: string }[];
