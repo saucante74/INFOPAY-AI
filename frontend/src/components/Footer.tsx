@@ -1,7 +1,17 @@
 import { Link } from "react-router";
 
-/** "Contact" was dropped entirely — no page exists for it, and none is planned. */
+/**
+ * "Contact" was dropped entirely — no page exists for it, and none is planned.
+ *
+ * "Fiabilité" sits here rather than in the Navbar on purpose: the Navbar
+ * holds the two routes a user comes here to *use* (Analyseur, Aide), while
+ * the footer already collects the pages that state what the service does and
+ * doesn't do (Confidentialité, Conditions d'utilisation). A page of measured
+ * RAG metrics is transparency material of exactly that kind — permanently
+ * reachable, never on the critical path of importing a payslip.
+ */
 const FOOTER_LINKS = [
+  { label: "Fiabilité", to: "/metriques" },
   { label: "Confidentialité", to: "/confidentialite" },
   { label: "Conditions d'utilisation", to: "/conditions-utilisation" },
 ] as const satisfies readonly { label: string; to: string }[];

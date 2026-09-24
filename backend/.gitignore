@@ -5,6 +5,11 @@ __pycache__/
 infopay.db
 chroma_data/
 
+# Isolated SQLite + ChromaDB corpus built by evaluation/run_benchmark.py.
+# Rebuildable from the PDFs in frontend/public/exemples/ — only the run's
+# results (frontend/src/data/rag_run.json) are committed.
+evaluation/.corpus/
+
 backend/venv/
 backend/__pycache__/
 backend/**/__pycache__/

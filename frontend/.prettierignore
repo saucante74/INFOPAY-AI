@@ -6,3 +6,6 @@ coverage
 # Generated from the backend's OpenAPI schema — reformatting it would create
 # noise on every regeneration.
 src/api/schema.ts
+
+# Written by backend/evaluation/run_benchmark.py — same reasoning.
+src/data/rag_run.json

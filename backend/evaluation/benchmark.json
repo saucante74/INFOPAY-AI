@@ -1,0 +1,306 @@
+{
+  "description": "RAG reliability benchmark for InfoPay AI. 36 cases, 24 answerable / 12 not (2:1). Every `expected_evidence` term below was verified to appear literally in the text pdfplumber actually extracts from the named PDF, and to fit inside a single 800-char chunk produced by `_chunk_text` — `run_benchmark.py` re-verifies this on every run and refuses to produce metrics if it no longer holds.",
+  "cases": [
+    {
+      "id": "A01",
+      "question": "Sur mon bulletin de janvier 2026, à quoi correspond la ligne CSG déductible ?",
+      "answerable": true,
+      "document": "bulletin_paie_01_2026.pdf",
+      "expected_source": "01/2026",
+      "expected_evidence": ["CSG déductible", "213,79"]
+    },
+    {
+      "id": "A02",
+      "question": "Quel est le montant du prélèvement à la source sur mon bulletin de janvier 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_01_2026.pdf",
+      "expected_source": "01/2026",
+      "expected_evidence": ["Prélèvement à la source", "236,93"]
+    },
+    {
+      "id": "A03",
+      "question": "Quel poste est indiqué sur mon bulletin de janvier 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_01_2026.pdf",
+      "expected_source": "01/2026",
+      "expected_evidence": ["Janvier 2026", "Ingénieur Développement"]
+    },
+    {
+      "id": "A04",
+      "question": "J'ai eu une prime en février 2026, de quel montant était-elle ?",
+      "answerable": true,
+      "document": "bulletin_paie_02_2026.pdf",
+      "expected_source": "02/2026",
+      "expected_evidence": ["Prime exceptionnelle", "150,00"]
+    },
+    {
+      "id": "A05",
+      "question": "Quel était mon salaire brut en février 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_02_2026.pdf",
+      "expected_source": "02/2026",
+      "expected_evidence": ["SALAIRE BRUT", "3 350,00"]
+    },
+    {
+      "id": "A06",
+      "question": "Combien ai-je perçu en net à payer en février 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_02_2026.pdf",
+      "expected_source": "02/2026",
+      "expected_evidence": ["NET À PAYER", "2 415,11"]
+    },
+    {
+      "id": "A07",
+      "question": "Ai-je des heures supplémentaires sur mon bulletin de mars 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_03_2026.pdf",
+      "expected_source": "03/2026",
+      "expected_evidence": ["Heures supplémentaires", "120,00"]
+    },
+    {
+      "id": "A08",
+      "question": "À combien s'élève le cumul de mes cotisations retraite en mars 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_03_2026.pdf",
+      "expected_source": "03/2026",
+      "expected_evidence": ["Cumul cotisations retraite", "517,92"]
+    },
+    {
+      "id": "A09",
+      "question": "Quel est mon net imposable de mars 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_03_2026.pdf",
+      "expected_source": "03/2026",
+      "expected_evidence": ["NET IMPOSABLE", "2 733,61"]
+    },
+    {
+      "id": "A10",
+      "question": "Quel est mon salaire brut en avril 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_04_2026.pdf",
+      "expected_source": "04/2026",
+      "expected_evidence": ["SALAIRE BRUT", "3 480,00"]
+    },
+    {
+      "id": "A11",
+      "question": "Que signifie la ligne CSG/CRDS non déductible sur mon bulletin d'avril 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_04_2026.pdf",
+      "expected_source": "04/2026",
+      "expected_evidence": ["CSG/CRDS non déductible", "99,15"]
+    },
+    {
+      "id": "A12",
+      "question": "Mon salaire de base a-t-il changé sur mon bulletin d'avril 2026 ?",
+      "answerable": true,
+      "document": "bulletin_paie_04_2026.pdf",
+      "expected_source": "04/2026",
+      "expected_evidence": ["Salaire de base", "3 280,00"]
+    },
+    {
+      "id": "A13",
+      "question": "Sur mon bulletin PharmaOuest de mars 2023, à quoi correspond la ligne Charges sociales salarié ?",
+      "answerable": true,
+      "document": "bulletin_pharmaouest_03_2023.pdf",
+      "expected_source": "03/2023",
+      "expected_evidence": ["Charges sociales salarié", "705,30"]
+    },
+    {
+      "id": "A14",
+      "question": "Quel montant net m'a été versé en mars 2023 ?",
+      "answerable": true,
+      "document": "bulletin_pharmaouest_03_2023.pdf",
+      "expected_source": "03/2023",
+      "expected_evidence": ["MONTANT NET VERSÉ", "2 109,40"]
+    },
+    {
+      "id": "A15",
+      "question": "Combien de cotisations retraite figurent sur mon bulletin de mars 2023 ?",
+      "answerable": true,
+      "document": "bulletin_pharmaouest_03_2023.pdf",
+      "expected_source": "03/2023",
+      "expected_evidence": ["Retraite (base + AGIRC-ARRCO, 2 parts)", "460,00"]
+    },
+    {
+      "id": "A16",
+      "question": "Quelle était ma fonction chez PharmaOuest en mars 2023 ?",
+      "answerable": true,
+      "document": "bulletin_pharmaouest_03_2023.pdf",
+      "expected_source": "03/2023",
+      "expected_evidence": ["Responsable Logistique Régional"]
+    },
+    {
+      "id": "A17",
+      "question": "À quoi correspond la prime de nuit sur mon bulletin de novembre 2024 ?",
+      "answerable": true,
+      "document": "bulletin_clinique_11_2024.pdf",
+      "expected_source": "11/2024",
+      "expected_evidence": ["Prime de nuit", "145,00"]
+    },
+    {
+      "id": "A18",
+      "question": "Quel taux de CSG/CRDS est appliqué sur mon bulletin de novembre 2024 ?",
+      "answerable": true,
+      "document": "bulletin_clinique_11_2024.pdf",
+      "expected_source": "11/2024",
+      "expected_evidence": ["CSG/CRDS", "9,70%", "243,25"]
+    },
+    {
+      "id": "A19",
+      "question": "Combien ai-je cotisé en retraite complémentaire T1 en novembre 2024 ?",
+      "answerable": true,
+      "document": "bulletin_clinique_11_2024.pdf",
+      "expected_source": "11/2024",
+      "expected_evidence": ["Retraite complémentaire T1", "80,52"]
+    },
+    {
+      "id": "A20",
+      "question": "Quel est le net à payer de mon bulletin de novembre 2024 ?",
+      "answerable": true,
+      "document": "bulletin_clinique_11_2024.pdf",
+      "expected_source": "11/2024",
+      "expected_evidence": ["NET À PAYER", "1 817,30"]
+    },
+    {
+      "id": "A21",
+      "question": "Sur mon bulletin AeroSpace d'août 2025, à quoi correspond la ligne retraite complémentaire cadres ?",
+      "answerable": true,
+      "document": "bulletin_aerospace_08_2025.pdf",
+      "expected_source": "08/2025",
+      "expected_evidence": ["retraite complémentaire cadres", "288,20"]
+    },
+    {
+      "id": "A22",
+      "question": "Quel est mon taux de prélèvement à la source en août 2025 ?",
+      "answerable": true,
+      "document": "bulletin_aerospace_08_2025.pdf",
+      "expected_source": "08/2025",
+      "expected_evidence": ["taux personnalisé 9,90%"]
+    },
+    {
+      "id": "A23",
+      "question": "Quel poste figure sur mon bulletin d'août 2025 ?",
+      "answerable": true,
+      "document": "bulletin_aerospace_08_2025.pdf",
+      "expected_source": "08/2025",
+      "expected_evidence": ["Technicien Supérieur Qualité"]
+    },
+    {
+      "id": "A24",
+      "question": "Quel est le montant du salaire de base et de la prime d'équipe en août 2025 ?",
+      "answerable": true,
+      "document": "bulletin_aerospace_08_2025.pdf",
+      "expected_source": "08/2025",
+      "expected_evidence": ["Salaire de base + prime d'équipe", "4 150,00"]
+    },
+    {
+      "id": "U01",
+      "question": "Quelle est la capitale de l'Australie ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U02",
+      "question": "Peux-tu me donner une recette de tarte aux pommes ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U03",
+      "question": "Comment installer Docker sur Ubuntu ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U04",
+      "question": "Qui a gagné la Coupe du monde de football en 2018 ?",
+      "answerable": false,
+      "unanswerable_kind": "off_topic",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U05",
+      "question": "Combien de tickets restaurant m'ont été attribués ce mois-ci ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U06",
+      "question": "Quel est le montant de ma prime de 13e mois ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U07",
+      "question": "Combien de jours de congés payés me reste-t-il ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U08",
+      "question": "Quel est le montant de mon indemnité de télétravail ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U09",
+      "question": "Quel est le montant de la participation aux bénéfices qui m'a été versée ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U10",
+      "question": "Combien d'intéressement ai-je perçu ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U11",
+      "question": "Combien de jours de RTT ai-je acquis ?",
+      "answerable": false,
+      "unanswerable_kind": "absent_field",
+      "expected_source": null,
+      "expected_evidence": []
+    },
+    {
+      "id": "U12",
+      "question": "Quel est le salaire brut indiqué sur mon bulletin BatiRenov de juin 2022 ?",
+      "answerable": false,
+      "unanswerable_kind": "not_imported",
+      "expected_source": null,
+      "expected_evidence": []
+    }
+  ],
+  "absent_terms": [
+    "ticket restaurant",
+    "tickets restaurant",
+    "13e mois",
+    "treizième mois",
+    "congés payés",
+    "télétravail",
+    "participation",
+    "intéressement",
+    "RTT",
+    "BATIRENOV",
+    "06/2022"
+  ]
+}
